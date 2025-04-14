@@ -6,25 +6,33 @@ const { Connection, Keypair, Transaction } = require('@solana/web3.js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token, { polling: false }); // Polling disabled
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`);
 
 app.use(express.json());
 
+// Set webhook
+bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
+
 // In-memory storage (Render free tier)
 let walletKey = null;
 let filters = {
-  liquidity: { min: 4000, max: 20000 }, // Your filters
-  marketCap: { min: 1000, max: 100000 }, // Your filters
-  devHolding: { min: 1, max: 10 }, // Your filters
-  poolSupply: { min: 40, max: 100 }, // Your filters
-  launchPrice: { min: 0.0000000023, max: 0.0010 }, // Your filters
+  liquidity: { min: 4000, max: 20000 },
+  marketCap: { min: 1000, max: 100000 },
+  devHolding: { min: 1, max: 10 },
+  poolSupply: { min: 40, max: 100 },
+  launchPrice: { min: 0.0000000023, max: 0.0010 },
   mintAuthRevoked: true,
   freezeAuthRevoked: true
 };
 
-// Store last token data for refresh
 let lastTokenData = null;
+
+// Telegram Bot Webhook Handler
+app.post(`/bot${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // Telegram Bot Logic
 bot.onText(/\/start/, (msg) => {
@@ -280,7 +288,6 @@ bot.on('callback_query', (query) => {
   } else if (query.data.startsWith('refresh_')) {
     const tokenAddress = query.data.split('_')[1];
     if (lastTokenData && lastTokenData.address === tokenAddress) {
-      // Mock refresh (real implementation needs Helius API call)
       lastTokenData.liquidity += 100; // Mock update
       lastTokenData.marketCap += 500; // Mock update
       sendTokenAlert(chatId, lastTokenData);
@@ -293,8 +300,10 @@ bot.on('callback_query', (query) => {
 // Helius Webhook
 app.post('/webhook', async (req, res) => {
   try {
+    console.log('Webhook received:', JSON.stringify(req.body, null, 2));
     const tokenData = req.body[0];
     if (!tokenData) {
+      console.log('No token data found in webhook payload');
       return res.status(200).send('No data');
     }
 
@@ -310,10 +319,12 @@ app.post('/webhook', async (req, res) => {
       freezeAuthRevoked: tokenData.freezeAuthRevoked || false
     };
 
-    lastTokenData = enrichedData; // Store for refresh
+    lastTokenData = enrichedData;
 
     if (checkToken(enrichedData)) {
       sendTokenAlert(process.env.CHAT_ID, enrichedData);
+    } else {
+      console.log('Token does not pass filters:', enrichedData);
     }
     res.status(200).send('OK');
   } catch (error) {
