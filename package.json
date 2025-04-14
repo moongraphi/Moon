@@ -7,13 +7,12 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.61.0", // Downgraded to a stable version
+    "node-telegram-bot-api": "^0.66.0",
     "@solana/web3.js": "^1.95.3",
     "express": "^4.21.0",
     "dotenv": "^16.4.5"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "license": "MIT"
+  }
 }
