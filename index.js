@@ -1,13 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const { Connection, Keypair, Transaction } = require('@solana/web3.js');
+const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction } = require('@solana/web3.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: false }); // Polling disabled
+const bot = new TelegramBot(token, { polling: false });
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`);
+const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
 app.use(express.json());
 
@@ -25,7 +26,6 @@ let filters = {
   mintAuthRevoked: true,
   freezeAuthRevoked: true
 };
-
 let lastTokenData = null;
 
 // Telegram Bot Webhook Handler
@@ -44,260 +44,129 @@ bot.onText(/\/start/, (msg) => {
   `, {
     reply_markup: {
       inline_keyboard: [
-        [
-          { text: '💰 Trade', callback_data: 'trade' },
-          { text: '🔐 Wallet', callback_data: 'wallet' }
-        ],
-        [
-          { text: '⚙️ Filters', callback_data: 'filters' },
-          { text: '📊 Portfolio', callback_data: 'portfolio' }
-        ],
-        [
-          { text: '❓ Help', callback_data: 'help' }
-        ]
+        [{ text: '💰 Trade', callback_data: 'trade' }, { text: '🔐 Wallet', callback_data: 'wallet' }],
+        [{ text: '⚙️ Filters', callback_data: 'filters' }, { text: '📊 Portfolio', callback_data: 'portfolio' }],
+        [{ text: '❓ Help', callback_data: 'help' }]
       ]
     }
   });
 });
 
-bot.on('callback_query', (query) => {
-  const chatId = query.message.chat.id;
-  const messageId = query.message.message_id;
+// Monitor Pump.fun for New Tokens
+async function monitorPumpFun() {
+  console.log('Starting Pump.fun monitoring...');
+  connection.onProgramAccountChange(
+    PUMP_FUN_PROGRAM,
+    async (keyedAccountInfo) => {
+      try {
+        const accountData = keyedAccountInfo.accountInfo.data;
+        // Decode account data (simplified for example; use Anchor IDL in production)
+        const tokenData = {
+          name: 'Unknown', // Replace with actual metadata parsing
+          address: keyedAccountInfo.accountId.toString(),
+          liquidity: 5000, // Replace with actual data
+          marketCap: 20000, // Replace with actual data
+          devHolding: 5, // Replace with actual data
+          poolSupply: 50, // Replace with actual data
+          launchPrice: 0.000005, // Replace with actual data
+          mintAuthRevoked: true, // Replace with actual data
+          freezeAuthRevoked: false // Replace with actual data
+        };
 
-  if (query.data === 'trade') {
-    bot.editMessageText(`
-    💰 Trade
-    📈 Buy  |  📉 Sell
-    ⬅️ Back
-    `, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '📈 Buy', callback_data: 'buy' },
-            { text: '📉 Sell', callback_data: 'sell' }
-          ],
-          [
-            { text: '⬅️ Back', callback_data: 'back' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data === 'buy') {
-    bot.sendMessage(chatId, `
-    📈 Buy Token
-    📍 Token Address: [Enter below]
-    💸 Amount (SOL): [Enter below]
-    `);
-    bot.once('message', async (msg) => {
-      const [address, amount] = msg.text.split(' ');
-      if (!walletKey) {
-        bot.sendMessage(msg.chat.id, '🔐 Please set up wallet first!');
-        return;
-      }
-      try {
-        const txId = await buyToken(address, amount, walletKey);
-        bot.sendMessage(msg.chat.id, `✅ Bought ${amount} SOL of ${address}\nTx: ${txId}`);
+        lastTokenData = tokenData;
+
+        if (checkToken(tokenData)) {
+          // Send alert to Telegram
+          sendTokenAlert(process.env.CHAT_ID, tokenData);
+
+          // Auto-snipe (buy token)
+          await autoSnipeToken(tokenData.address);
+        } else {
+          console.log('Token does not pass filters:', tokenData);
+        }
       } catch (error) {
-        bot.sendMessage(msg.chat.id, `❌ Buy failed: ${error.message}`);
+        console.error('Error monitoring Pump.fun:', error);
       }
-    });
-  } else if (query.data === 'sell') {
-    bot.sendMessage(chatId, `
-    📉 Sell Token
-    📍 Token Address: [Enter below]
-    💸 Amount (SOL): [Enter below]
-    `);
-    bot.once('message', async (msg) => {
-      const [address, amount] = msg.text.split(' ');
-      if (!walletKey) {
-        bot.sendMessage(msg.chat.id, '🔐 Please set up wallet first!');
-        return;
-      }
-      try {
-        const txId = await sellToken(address, amount, walletKey);
-        bot.sendMessage(msg.chat.id, `✅ Sold ${amount} SOL of ${address}\nTx: ${txId}`);
-      } catch (error) {
-        bot.sendMessage(msg.chat.id, `❌ Sell failed: ${error.message}`);
-      }
-    });
-  } else if (query.data === 'wallet') {
-    bot.editMessageText(`
-    🔐 Wallet Setup
-    👉 Enter Private Key
-    `, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Save', callback_data: 'save_wallet' },
-            { text: '❌ Cancel', callback_data: 'cancel_wallet' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data === 'save_wallet') {
-    bot.sendMessage(chatId, '🔒 Please send your private key:');
-    bot.once('message', (msg) => {
-      walletKey = msg.text;
-      bot.sendMessage(msg.chat.id, '✅ Wallet saved securely!');
-    });
-  } else if (query.data === 'cancel_wallet') {
-    bot.editMessageText(`
-    👋 Welcome to @MemeSniperBot
-    💰 Trade  |  🔐 Wallet
-    ⚙️ Filters  |  📊 Portfolio
-    ❓ Help
-    `, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '💰 Trade', callback_data: 'trade' },
-            { text: '🔐 Wallet', callback_data: 'wallet' }
-          ],
-          [
-            { text: '⚙️ Filters', callback_data: 'filters' },
-            { text: '📊 Portfolio', callback_data: 'portfolio' }
-          ],
-          [
-            { text: '❓ Help', callback_data: 'help' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data === 'filters') {
-    bot.editMessageText(`
-    ⚙️ Filters
-    💧 Liquidity: ${filters.liquidity.min}-${filters.liquidity.max}
-    📈 Market Cap: ${filters.marketCap.min}-${filters.marketCap.max}
-    💸 Launch Price: ${filters.launchPrice.min}-${filters.launchPrice.max} SOL
-    👨‍💻 Dev Holding: ${filters.devHolding.min}%-${filters.devHolding.max}%
-    🏦 Pool Supply: ${filters.poolSupply.min}%-${filters.poolSupply.max}%
-    🟢 Mint Auth: ${filters.mintAuthRevoked ? '✅ Yes' : '❌ No'}
-    🟢 Freeze Auth: ${filters.freezeAuthRevoked ? '✅ Yes' : '❌ No'}
-    `, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '💧 Liquidity', callback_data: 'edit_liquidity' },
-            { text: '📈 Market Cap', callback_data: 'edit_marketCap' }
-          ],
-          [
-            { text: '👨‍💻 Dev Holding', callback_data: 'edit_devHolding' },
-            { text: '🏦 Pool Supply', callback_data: 'edit_poolSupply' }
-          ],
-          [
-            { text: '💸 Launch Price', callback_data: 'edit_launchPrice' },
-            { text: '🟢 Mint Auth', callback_data: 'toggle_mintAuth' }
-          ],
-          [
-            { text: '🟢 Freeze Auth', callback_data: 'toggle_freezeAuth' }
-          ],
-          [
-            { text: '💾 Save', callback_data: 'save_filters' },
-            { text: '🗑️ Reset', callback_data: 'reset_filters' }
-          ],
-          [
-            { text: '⬅️ Back', callback_data: 'back' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data.startsWith('edit_')) {
-    const field = query.data.split('_')[1];
-    bot.sendMessage(chatId, `👉 Enter Min and Max for ${field} (e.g., 0.001 0.1):`);
-    bot.once('message', (msg) => {
-      const [min, max] = msg.text.split(' ').map(Number);
-      filters[field] = { min, max };
-      bot.sendMessage(msg.chat.id, `✅ ${field} set to ${min}-${max}`);
-    });
-  } else if (query.data === 'toggle_mintAuth') {
-    filters.mintAuthRevoked = !filters.mintAuthRevoked;
-    bot.sendMessage(chatId, `🟢 Mint Auth set to ${filters.mintAuthRevoked ? '✅ Yes' : '❌ No'}`);
-  } else if (query.data === 'toggle_freezeAuth') {
-    filters.freezeAuthRevoked = !filters.freezeAuthRevoked;
-    bot.sendMessage(chatId, `🟢 Freeze Auth set to ${filters.freezeAuthRevoked ? '✅ Yes' : '❌ No'}`);
-  } else if (query.data === 'save_filters') {
-    bot.sendMessage(chatId, '💾 Filters saved!');
-  } else if (query.data === 'reset_filters') {
-    filters = {
-      liquidity: { min: 4000, max: 20000 },
-      marketCap: { min: 1000, max: 100000 },
-      devHolding: { min: 1, max: 10 },
-      poolSupply: { min: 40, max: 100 },
-      launchPrice: { min: 0.0000000023, max: 0.0010 },
-      mintAuthRevoked: true,
-      freezeAuthRevoked: true
-    };
-    bot.sendMessage(chatId, '🗑️ Filters reset!');
-  } else if (query.data === 'portfolio') {
-    bot.editMessageText('📊 Portfolio\nComing soon!', {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '⬅️ Back', callback_data: 'back' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data === 'help') {
-    bot.editMessageText('❓ Help\nUse /start to begin!', {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '⬅️ Back', callback_data: 'back' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data === 'back') {
-    bot.editMessageText(`
-    👋 Welcome to @MemeSniperBot
-    💰 Trade  |  🔐 Wallet
-    ⚙️ Filters  |  📊 Portfolio
-    ❓ Help
-    `, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '💰 Trade', callback_data: 'trade' },
-            { text: '🔐 Wallet', callback_data: 'wallet' }
-          ],
-          [
-            { text: '⚙️ Filters', callback_data: 'filters' },
-            { text: '📊 Portfolio', callback_data: 'portfolio' }
-          ],
-          [
-            { text: '❓ Help', callback_data: 'help' }
-          ]
-        ]
-      }
-    });
-  } else if (query.data.startsWith('refresh_')) {
-    const tokenAddress = query.data.split('_')[1];
-    if (lastTokenData && lastTokenData.address === tokenAddress) {
-      lastTokenData.liquidity += 100; // Mock update
-      lastTokenData.marketCap += 500; // Mock update
-      sendTokenAlert(chatId, lastTokenData);
-    } else {
-      bot.sendMessage(chatId, '❌ Token data not found for refresh.');
-    }
+    },
+    'confirmed',
+    [
+      { dataSize: 165 }, // Adjust based on Pump.fun account size
+      { memcmp: { offset: 0, bytes: 'create' } } // Filter for "create" instruction
+    ]
+  );
+}
+
+// Auto-Snipe Logic
+async function autoSnipeToken(tokenAddress) {
+  try {
+    const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
+    const tokenAccount = new PublicKey(tokenAddress);
+    const amountToBuy = 0.1; // 0.1 SOL
+
+    // Simplified buy transaction (replace with actual Pump.fun buy logic)
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: tokenAccount,
+        lamports: amountToBuy * 1e9 // Convert SOL to lamports
+      })
+    );
+
+    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);
+    console.log(`Bought token ${tokenAddress} with signature ${signature}`);
+
+    bot.sendMessage(process.env.CHAT_ID, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
+  } catch (error) {
+    console.error('Error auto-sniping token:', error);
+    bot.sendMessage(process.env.CHAT_ID, `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
   }
-});
+}
 
-// Helius Webhook
+// Send Token Alert
+function sendTokenAlert(chatId, tokenData) {
+  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
+  bot.sendMessage(chatId, `
+  🔥 New Meme Coin on Pump.fun!
+  📜 Name: ${tokenData.name}
+  📍 Contract: ${tokenData.address}
+  💧 Liquidity: $${tokenData.liquidity}
+  📈 Market Cap: $${tokenData.marketCap}
+  💸 Launch Price: ${tokenData.launchPrice} SOL
+  👨‍💻 Dev Holding: ${tokenData.devHolding}%
+  🏦 Pool Supply: ${tokenData.poolSupply}%
+  🟢 Mint Auth: ${tokenData.mintAuthRevoked ? 'Revoked' : 'Not Revoked'}
+  🔴 Freeze Auth: ${tokenData.freezeAuthRevoked ? 'Revoked' : 'Not Revoked'}
+  📊 Chart: [View Chart](${chartLink})
+  `, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Refresh', callback_data: `refresh_${tokenData.address}` }, { text: '💰 Buy Now', callback_data: `buy_${tokenData.address}` }],
+        [{ text: '➡️ Details', callback_data: `details_${tokenData.address}` }, { text: '❌ Ignore', callback_data: 'ignore' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  });
+}
+
+// Filter Logic
+function checkToken(tokenData) {
+  return (
+    tokenData.liquidity >= filters.liquidity.min &&
+    tokenData.liquidity <= filters.liquidity.max &&
+    tokenData.marketCap >= filters.marketCap.min &&
+    tokenData.marketCap <= filters.marketCap.max &&
+    tokenData.devHolding >= filters.devHolding.min &&
+    tokenData.devHolding <= filters.devHolding.max &&
+    tokenData.poolSupply >= filters.poolSupply.min &&
+    tokenData.poolSupply <= filters.poolSupply.max &&
+    tokenData.launchPrice >= filters.launchPrice.min &&
+    tokenData.launchPrice <= filters.launchPrice.max &&
+    tokenData.mintAuthRevoked === filters.mintAuthRevoked &&
+    tokenData.freezeAuthRevoked === filters.freezeAuthRevoked
+  );
+}
+
+// Helius Webhook (for backup)
 app.post('/webhook', async (req, res) => {
   try {
     console.log('Webhook received:', JSON.stringify(req.body, null, 2));
@@ -323,6 +192,7 @@ app.post('/webhook', async (req, res) => {
 
     if (checkToken(enrichedData)) {
       sendTokenAlert(process.env.CHAT_ID, enrichedData);
+      await autoSnipeToken(enrichedData.address);
     } else {
       console.log('Token does not pass filters:', enrichedData);
     }
@@ -333,93 +203,17 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Send Token Alert
-function sendTokenAlert(chatId, tokenData) {
-  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
-  bot.sendMessage(chatId, `
-  🔥 New Meme Coin on Pump.fun!
-  📜 Name: ${tokenData.name}
-  📍 Contract: ${tokenData.address}
-  💧 Liquidity: $${tokenData.liquidity}
-  📈 Market Cap: $${tokenData.marketCap}
-  💸 Launch Price: ${tokenData.launchPrice} SOL
-  👨‍💻 Dev Holding: ${tokenData.devHolding}%
-  🏦 Pool Supply: ${tokenData.poolSupply}%
-  🟢 Mint Auth: ${tokenData.mintAuthRevoked ? 'Revoked' : 'Not Revoked'}
-  🔴 Freeze Auth: ${tokenData.freezeAuthRevoked ? 'Revoked' : 'Not Revoked'}
-  📊 Chart: [View Chart](${chartLink})
-  `, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '🔄 Refresh', callback_data: `refresh_${tokenData.address}` },
-          { text: '💰 Buy Now', callback_data: `buy_${tokenData.address}` }
-        ],
-        [
-          { text: '➡️ Details', callback_data: `details_${tokenData.address}` },
-          { text: '❌ Ignore', callback_data: 'ignore' }
-        ]
-      ]
-    },
-    parse_mode: 'Markdown'
-  });
-}
-
-// Solana Logic
-async function buyToken(tokenAddress, amount, privateKey) {
-  try {
-    const wallet = Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
-    const tx = new Transaction();
-    tx.add(/* Mock instruction */);
-    tx.sign(wallet);
-    const txId = await connection.sendRawTransaction(tx.serialize());
-    return txId;
-  } catch (error) {
-    throw new Error(`Buy failed: ${error.message}`);
-  }
-}
-
-async function sellToken(tokenAddress, amount, privateKey) {
-  try {
-    const wallet = Keypair.fromSecretKey(Buffer.from(privateKey, 'base64'));
-    const tx = new Transaction();
-    tx.add(/* Mock instruction */);
-    tx.sign(wallet);
-    const txId = await connection.sendRawTransaction(tx.serialize());
-    return txId;
-  } catch (error) {
-    throw new Error(`Sell failed: ${error.message}`);
-  }
-}
-
-// Filter Logic
 function calculateLaunchPrice(tokenData) {
   const solSpent = tokenData.initialSwap?.solAmount || 1;
   const tokensReceived = tokenData.initialSwap?.tokenAmount || 200000;
   return solSpent / tokensReceived;
 }
 
-function checkToken(tokenData) {
-  return (
-    tokenData.liquidity >= filters.liquidity.min &&
-    tokenData.liquidity <= filters.liquidity.max &&
-    tokenData.marketCap >= filters.marketCap.min &&
-    tokenData.marketCap <= filters.marketCap.max &&
-    tokenData.devHolding >= filters.devHolding.min &&
-    tokenData.devHolding <= filters.devHolding.max &&
-    tokenData.poolSupply >= filters.poolSupply.min &&
-    tokenData.poolSupply <= filters.poolSupply.max &&
-    tokenData.launchPrice >= filters.launchPrice.min &&
-    tokenData.launchPrice <= filters.launchPrice.max &&
-    tokenData.mintAuthRevoked === filters.mintAuthRevoked &&
-    tokenData.freezeAuthRevoked === filters.freezeAuthRevoked
-  );
-}
-
 // Health Check
 app.get('/', (req, res) => res.send('Bot running!'));
 
-// Start Server
+// Start Server and Monitoring
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  monitorPumpFun(); // Start monitoring Pump.fun
 });
