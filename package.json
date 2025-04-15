@@ -1,5 +1,5 @@
 {
-  "name": "meme-sniper-bot",
+  "name": "moongraphi_bot",
   "version": "1.0.0",
   "description": "Trojan-style meme coin sniper bot for Pump.fun",
   "main": "index.js",
@@ -10,7 +10,8 @@
     "node-telegram-bot-api": "^0.66.0",
     "@solana/web3.js": "^1.95.3",
     "express": "^4.21.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "@solana/spl-token": "^0.4.8"
   },
   "engines": {
     "node": ">=18.0.0"
