@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction } = require('@solana/web3.js');
+const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,13 +18,13 @@ bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
 // In-memory storage (Render free tier)
 let walletKey = null;
 let filters = {
-  liquidity: { min: 1000, max: 50000 }, // Relaxed
-  marketCap: { min: 500, max: 200000 }, // Relaxed
-  devHolding: { min: 0, max: 20 }, // Relaxed
-  poolSupply: { min: 20, max: 100 }, // Relaxed
-  launchPrice: { min: 0.000000001, max: 0.01 }, // Relaxed
-  mintAuthRevoked: false, // Relaxed
-  freezeAuthRevoked: false // Relaxed
+  liquidity: { min: 4000, max: 20000 }, // Original filters restored
+  marketCap: { min: 1000, max: 100000 },
+  devHolding: { min: 1, max: 10 },
+  poolSupply: { min: 40, max: 100 },
+  launchPrice: { min: 0.0000000023, max: 0.0010 },
+  mintAuthRevoked: true,
+  freezeAuthRevoked: true
 };
 let lastTokenData = null;
 
@@ -37,7 +37,7 @@ app.post(`/bot${token}`, (req, res) => {
 // Telegram Bot Logic
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
-  👋 Welcome to @Moonsniperbot // Replace @Moongarphi_bot with your bot's actual username
+  👋 Welcome to @moongraphi_bot
   💰 Trade  |  🔐 Wallet
   ⚙️ Filters  |  📊 Portfolio
   ❓ Help
@@ -84,10 +84,16 @@ bot.on('callback_query', (callbackQuery) => {
       break;
 
     case 'filters':
-      bot.sendMessage(msg.chat.id, `⚙️ Filters Menu\nCurrent Filters:\nLiquidity: ${filters.liquidity.min}-${filters.liquidity.max}\nMarket Cap: ${filters.marketCap.min}-${filters.marketCap.max}\nDev Holding: ${filters.devHolding.min}-${filters.devHolding.max}%`, {
+      bot.sendMessage(msg.chat.id, `⚙️ Filters Menu\nCurrent Filters:\nLiquidity: ${filters.liquidity.min}-${filters.liquidity.max}\nMarket Cap: ${filters.marketCap.min}-${filters.marketCap.max}\nDev Holding: ${filters.devHolding.min}-${filters.devHolding.max}%\nPool Supply: ${filters.poolSupply.min}-${filters.poolSupply.max}%\nLaunch Price: ${filters.launchPrice.min}-${filters.launchPrice.max} SOL\nMint Auth Revoked: ${filters.mintAuthRevoked ? 'Yes' : 'No'}\nFreeze Auth Revoked: ${filters.freezeAuthRevoked ? 'Yes' : 'No'}`, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '✏️ Edit Filters', callback_data: 'edit_filters' }],
+            [{ text: '✏️ Edit Liquidity', callback_data: 'edit_liquidity' }],
+            [{ text: '✏️ Edit Market Cap', callback_data: 'edit_marketcap' }],
+            [{ text: '✏️ Edit Dev Holding', callback_data: 'edit_devholding' }],
+            [{ text: '✏️ Edit Pool Supply', callback_data: 'edit_poolsupply' }],
+            [{ text: '✏️ Edit Launch Price', callback_data: 'edit_launchprice' }],
+            [{ text: '✏️ Edit Mint Auth', callback_data: 'edit_mintauth' }],
+            [{ text: '✏️ Edit Freeze Auth', callback_data: 'edit_freezeauth' }],
             [{ text: '⬅️ Back', callback_data: 'back' }]
           ]
         }
@@ -115,7 +121,7 @@ bot.on('callback_query', (callbackQuery) => {
       break;
 
     case 'back':
-      bot.editMessageText(`👋 Welcome to @MoonSniperBot\n💰 Trade  |  🔐 Wallet\n⚙️ Filters  |  📊 Portfolio\n❓ Help`, {
+      bot.editMessageText(`👋 Welcome to @moongraphi_bot\n💰 Trade  |  🔐 Wallet\n⚙️ Filters  |  📊 Portfolio\n❓ Help`, {
         chat_id: msg.chat.id,
         message_id: msg.message_id,
         reply_markup: {
@@ -123,6 +129,77 @@ bot.on('callback_query', (callbackQuery) => {
             [{ text: '💰 Trade', callback_data: 'trade' }, { text: '🔐 Wallet', callback_data: 'wallet' }],
             [{ text: '⚙️ Filters', callback_data: 'filters' }, { text: '📊 Portfolio', callback_data: 'portfolio' }],
             [{ text: '❓ Help', callback_data: 'help' }]
+          ]
+        }
+      });
+      break;
+
+    // Placeholder for future edit filter handlers
+    case 'edit_liquidity':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Liquidity\nPlease send the new range (e.g., "5000-15000")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_marketcap':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Market Cap\nPlease send the new range (e.g., "2000-80000")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_devholding':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Dev Holding\nPlease send the new range (e.g., "2-8")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_poolsupply':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Pool Supply\nPlease send the new range (e.g., "30-90")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_launchprice':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Launch Price\nPlease send the new range (e.g., "0.000000002-0.002")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_mintauth':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Mint Auth Revoked\nSend "Yes" or "No"', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_freezeauth':
+      bot.sendMessage(msg.chat.id, '✏️ Edit Freeze Auth Revoked\nSend "Yes" or "No"', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
           ]
         }
       });
@@ -147,11 +224,11 @@ async function monitorPumpFun() {
         const tokenData = {
           name: 'TestToken', // Replace with actual metadata parsing
           address: tokenAddress,
-          liquidity: 3000, // Replace with actual data
-          marketCap: 15000, // Replace with actual data
-          devHolding: 8, // Replace with actual data
-          poolSupply: 60, // Replace with actual data
-          launchPrice: 0.000003, // Replace with actual data
+          liquidity: 5000, // Replace with actual data
+          marketCap: 20000, // Replace with actual data
+          devHolding: 5, // Replace with actual data
+          poolSupply: 50, // Replace with actual data
+          launchPrice: 0.000005, // Replace with actual data
           mintAuthRevoked: true, // Replace with actual data
           freezeAuthRevoked: false // Replace with actual data
         };
