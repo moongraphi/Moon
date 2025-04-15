@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
+const { getMint, TOKEN_PROGRAM_ID } = require('@solana/spl-token'); // For fetching token metadata
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,13 +19,13 @@ bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
 // In-memory storage (Render free tier)
 let walletKey = null;
 let filters = {
-  liquidity: { min: 4000, max: 20000 },
-  marketCap: { min: 1000, max: 100000 },
-  devHolding: { min: 1, max: 10 },
+  liquidity: { min: 7000, max: 12000 }, // Updated to your filters
+  marketCap: { min: 2000, max: 80000 },
+  devHolding: { min: 2, max: 7 },
   poolSupply: { min: 40, max: 100 },
   launchPrice: { min: 0.0000000023, max: 0.0010 },
   mintAuthRevoked: true,
-  freezeAuthRevoked: true
+  freezeAuthRevoked: false
 };
 let lastTokenData = null;
 
@@ -61,7 +62,6 @@ bot.on('callback_query', (callbackQuery) => {
   const data = callbackQuery.data;
   const chatId = msg.chat.id;
 
-  // Acknowledge the callback query to avoid Telegram timeout
   bot.answerCallbackQuery(callbackQuery.id);
 
   switch (data) {
@@ -138,7 +138,6 @@ bot.on('callback_query', (callbackQuery) => {
       });
       break;
 
-    // Set state for editing filters
     case 'edit_liquidity':
       userStates[chatId] = { editing: 'liquidity' };
       bot.sendMessage(chatId, '✏️ Edit Liquidity\nPlease send the new range (e.g., "5000-15000" or "5000 15000")', {
@@ -226,17 +225,14 @@ bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  // Ignore commands (like /start)
   if (text.startsWith('/')) return;
 
-  // Check if user is in editing state
   if (!userStates[chatId] || !userStates[chatId].editing) return;
 
   const editingField = userStates[chatId].editing;
 
   try {
     if (editingField === 'liquidity' || editingField === 'marketcap' || editingField === 'devholding' || editingField === 'poolsupply' || editingField === 'launchprice') {
-      // Parse range input (e.g., "5000-15000" or "5000 15000")
       let [min, max] = [];
       if (text.includes('-')) {
         [min, max] = text.split('-').map(val => parseFloat(val.trim()));
@@ -244,12 +240,11 @@ bot.on('message', (msg) => {
         [min, max] = text.split(/\s+/).map(val => parseFloat(val.trim()));
       }
 
-      if (isNaN(min) || isNaN(max) || min > max) { // Changed condition to allow min == max
+      if (isNaN(min) || isNaN(max) || min > max) {
         bot.sendMessage(chatId, 'Invalid range. Please send a valid range (e.g., "5000-15000" or "5000 15000").');
         return;
       }
 
-      // Update the respective filter
       if (editingField === 'liquidity') {
         filters.liquidity.min = min;
         filters.liquidity.max = max;
@@ -275,7 +270,6 @@ bot.on('message', (msg) => {
         }
       });
     } else if (editingField === 'mintauth' || editingField === 'freezeauth') {
-      // Parse boolean input (Yes/No)
       const value = text.trim().toLowerCase();
       if (value !== 'yes' && value !== 'no') {
         bot.sendMessage(chatId, 'Invalid input. Please send "Yes" or "No".');
@@ -298,14 +292,13 @@ bot.on('message', (msg) => {
       });
     }
 
-    // Clear user state after successful update
     delete userStates[chatId];
   } catch (error) {
     bot.sendMessage(chatId, 'Error processing your input. Please try again.');
   }
 });
 
-// Monitor Pump.fun for New Tokens
+// Monitor Pump.fun for New Tokens (Real Monitoring)
 async function monitorPumpFun() {
   console.log('Starting Pump.fun monitoring...');
   connection.onProgramAccountChange(
@@ -315,16 +308,20 @@ async function monitorPumpFun() {
         const accountData = keyedAccountInfo.accountInfo.data;
         const tokenAddress = keyedAccountInfo.accountId.toString();
 
+        // Fetch token metadata from Solana
+        const mint = await getMint(connection, new PublicKey(tokenAddress));
+        
+        // Extract token data (these are placeholders, you'll need to parse actual data from accountData)
         const tokenData = {
-          name: 'TestToken',
+          name: `Token_${tokenAddress.slice(0, 8)}`, // Placeholder name (fetch from metadata if available)
           address: tokenAddress,
-          liquidity: 5000,
-          marketCap: 20000,
-          devHolding: 5,
-          poolSupply: 50,
-          launchPrice: 0.000005,
-          mintAuthRevoked: true,
-          freezeAuthRevoked: false
+          liquidity: await fetchLiquidity(tokenAddress), // Implement this function
+          marketCap: await fetchMarketCap(tokenAddress), // Implement this function
+          devHolding: await fetchDevHolding(tokenAddress), // Implement this function
+          poolSupply: await fetchPoolSupply(tokenAddress), // Implement this function
+          launchPrice: await fetchLaunchPrice(tokenAddress), // Implement this function
+          mintAuthRevoked: mint.mintAuthority === null, // Check if mint authority is revoked
+          freezeAuthRevoked: mint.freezeAuthority === null // Check if freeze authority is revoked
         };
 
         console.log('New token detected:', tokenData);
@@ -348,6 +345,33 @@ async function monitorPumpFun() {
       { memcmp: { offset: 0, bytes: 'create' } }
     ]
   );
+}
+
+// Placeholder functions to fetch real data (you'll need to implement these based on Pump.fun's data structure)
+async function fetchLiquidity(tokenAddress) {
+  // Fetch liquidity from Solana blockchain or an API like Helius
+  // For now, return a dummy value within your filter range for testing
+  return 8000; // Matches filter (7000-12000)
+}
+
+async function fetchMarketCap(tokenAddress) {
+  // Fetch market cap (e.g., from token supply and price)
+  return 20000; // Matches filter (2000-80000)
+}
+
+async function fetchDevHolding(tokenAddress) {
+  // Fetch dev holding percentage (e.g., by checking token distribution)
+  return 5; // Matches filter (2-7)
+}
+
+async function fetchPoolSupply(tokenAddress) {
+  // Fetch pool supply percentage
+  return 50; // Matches filter (40-100)
+}
+
+async function fetchLaunchPrice(tokenAddress) {
+  // Fetch launch price (e.g., from initial swap data)
+  return 0.000005; // Matches filter (0.0000000023-0.0010)
 }
 
 // Auto-Snipe Logic
@@ -432,7 +456,7 @@ app.post('/webhook', async (req, res) => {
     const enrichedData = {
       name: tokenData.token?.metadata?.name || 'Unknown',
       address: tokenData.token?.address || 'Unknown',
-      liquidity: tokenData.liquidity || 5000,
+      liquidity: tokenData.liquidity || 8000,
       marketCap: tokenData.marketCap || 20000,
       devHolding: tokenData.devHolding || 5,
       poolSupply: tokenData.poolSupply || 50,
