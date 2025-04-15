@@ -141,7 +141,7 @@ bot.on('callback_query', (callbackQuery) => {
     // Set state for editing filters
     case 'edit_liquidity':
       userStates[chatId] = { editing: 'liquidity' };
-      bot.sendMessage(chatId, '✏️ Edit Liquidity\nPlease send the new range (e.g., "5000-15000")', {
+      bot.sendMessage(chatId, '✏️ Edit Liquidity\nPlease send the new range (e.g., "5000-15000" or "5000 15000")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -152,7 +152,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_marketcap':
       userStates[chatId] = { editing: 'marketcap' };
-      bot.sendMessage(chatId, '✏️ Edit Market Cap\nPlease send the new range (e.g., "2000-80000")', {
+      bot.sendMessage(chatId, '✏️ Edit Market Cap\nPlease send the new range (e.g., "2000-80000" or "2000 80000")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -163,7 +163,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_devholding':
       userStates[chatId] = { editing: 'devholding' };
-      bot.sendMessage(chatId, '✏️ Edit Dev Holding\nPlease send the new range (e.g., "2-8")', {
+      bot.sendMessage(chatId, '✏️ Edit Dev Holding\nPlease send the new range (e.g., "2-8" or "2 8")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -174,7 +174,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_poolsupply':
       userStates[chatId] = { editing: 'poolsupply' };
-      bot.sendMessage(chatId, '✏️ Edit Pool Supply\nPlease send the new range (e.g., "30-90")', {
+      bot.sendMessage(chatId, '✏️ Edit Pool Supply\nPlease send the new range (e.g., "30-90" or "30 90")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -185,7 +185,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_launchprice':
       userStates[chatId] = { editing: 'launchprice' };
-      bot.sendMessage(chatId, '✏️ Edit Launch Price\nPlease send the new range (e.g., "0.000000002-0.002")', {
+      bot.sendMessage(chatId, '✏️ Edit Launch Price\nPlease send the new range (e.g., "0.000000002-0.002" or "0.000000002 0.002")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -236,10 +236,16 @@ bot.on('message', (msg) => {
 
   try {
     if (editingField === 'liquidity' || editingField === 'marketcap' || editingField === 'devholding' || editingField === 'poolsupply' || editingField === 'launchprice') {
-      // Parse range input (e.g., "5000-15000")
-      const [min, max] = text.split('-').map(val => parseFloat(val.trim()));
-      if (isNaN(min) || isNaN(max) || min >= max) {
-        bot.sendMessage(chatId, 'Invalid range. Please send a valid range (e.g., "5000-15000").');
+      // Parse range input (e.g., "5000-15000" or "5000 15000")
+      let [min, max] = [];
+      if (text.includes('-')) {
+        [min, max] = text.split('-').map(val => parseFloat(val.trim()));
+      } else {
+        [min, max] = text.split(/\s+/).map(val => parseFloat(val.trim()));
+      }
+
+      if (isNaN(min) || isNaN(max) || min > max) { // Changed condition to allow min == max
+        bot.sendMessage(chatId, 'Invalid range. Please send a valid range (e.g., "5000-15000" or "5000 15000").');
         return;
       }
 
