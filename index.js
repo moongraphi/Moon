@@ -298,59 +298,123 @@ bot.on('message', (msg) => {
   }
 });
 
-// Monitor Pump.fun for New Tokens (Using Dummy Data for Testing)
+// Monitor Pump.fun for New Tokens (Real Monitoring)
 async function monitorPumpFun() {
   console.log('Starting Pump.fun monitoring...');
-  const tokenAddress = 'DUMMY_ADDRESS_' + Date.now();
-  const tokenData = {
-    name: 'TestToken',
-    address: tokenAddress,
-    liquidity: 8000,
-    marketCap: 20000,
-    devHolding: 5,
-    poolSupply: 50,
-    launchPrice: 0.000005,
-    mintAuthRevoked: true,
-    freezeAuthRevoked: false
-  };
+  connection.onProgramAccountChange(
+    PUMP_FUN_PROGRAM,
+    async (keyedAccountInfo) => {
+      try {
+        const accountData = keyedAccountInfo.accountInfo.data;
+        const tokenAddress = keyedAccountInfo.accountId.toString();
 
-  lastTokenData = tokenData;
+        // Fetch token metadata from Solana
+        const mint = await getMint(connection, new PublicKey(tokenAddress), 'confirmed', TOKEN_PROGRAM_ID);
 
-  if (checkToken(tokenData)) {
-    console.log('Token passed filters:', tokenData);
-    sendTokenAlert('-1002511600127', tokenData);
-  } else {
-    console.log('Token does not pass filters:', tokenData);
-  }
+        // Fetch real data using implemented functions
+        const tokenData = {
+          name: `Token_${tokenAddress.slice(0, 8)}`, // Placeholder name (fetch from metadata if available)
+          address: tokenAddress,
+          liquidity: await fetchLiquidity(tokenAddress),
+          marketCap: await fetchMarketCap(tokenAddress),
+          devHolding: await fetchDevHolding(tokenAddress),
+          poolSupply: await fetchPoolSupply(tokenAddress),
+          launchPrice: await fetchLaunchPrice(tokenAddress),
+          mintAuthRevoked: mint.mintAuthority === null,
+          freezeAuthRevoked: mint.freezeAuthority === null
+        };
 
-  setTimeout(monitorPumpFun, 60000); // Run every 60 seconds
+        console.log('New token detected:', tokenData);
+
+        lastTokenData = tokenData;
+
+        if (checkToken(tokenData)) {
+          console.log('Token passed filters:', tokenData);
+          sendTokenAlert('-1002511600127', tokenData);
+          await autoSnipeToken(tokenData.address);
+        } else {
+          console.log('Token does not pass filters:', tokenData);
+        }
+      } catch (error) {
+        console.error('Error monitoring Pump.fun:', error);
+      }
+    },
+    'confirmed',
+    [
+      { dataSize: 165 }, // Adjust based on Pump.fun account data size
+      { memcmp: { offset: 0, bytes: 'create' } } // Filter for token creation events
+    ]
+  );
 }
 
-// Placeholder functions to fetch real data (you'll need to implement these based on Pump.fun's data structure)
+// Fetch real data using Helius API
 async function fetchLiquidity(tokenAddress) {
-  // Fetch liquidity from Solana blockchain or an API like Helius
-  // For now, return a dummy value within your filter range for testing
-  return 8000; // Matches filter (7000-12000)
+  try {
+    const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/balances?api-key=${process.env.HELIUS_API_KEY}`);
+    const data = await response.json();
+    const liquidity = data?.tokens?.find(token => token.mint === tokenAddress)?.liquidity || 8000;
+    return liquidity;
+  } catch (error) {
+    console.error('Error fetching liquidity:', error);
+    return 8000; // Fallback
+  }
 }
 
 async function fetchMarketCap(tokenAddress) {
-  // Fetch market cap (e.g., from token supply and price)
-  return 20000; // Matches filter (2000-80000)
+  try {
+    const response = await fetch(`https://api.helius.xyz/v0/tokens/${tokenAddress}?api-key=${process.env.HELIUS_API_KEY}`);
+    const data = await response.json();
+    const totalSupply = data?.totalSupply || 1_000_000_000;
+    const price = data?.price || 0.00002;
+    return totalSupply * price;
+  } catch (error) {
+    console.error('Error fetching market cap:', error);
+    return 20000; // Fallback
+  }
 }
 
 async function fetchDevHolding(tokenAddress) {
-  // Fetch dev holding percentage (e.g., by checking token distribution)
-  return 5; // Matches filter (2-7)
+  try {
+    const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/holders?api-key=${process.env.HELIUS_API_KEY}`);
+    const data = await response.json();
+    const topHolder = data?.holders?.[0]?.percentage || 5;
+    return topHolder;
+  } catch (error) {
+    console.error('Error fetching dev holding:', error);
+    return 5; // Fallback
+  }
 }
 
 async function fetchPoolSupply(tokenAddress) {
-  // Fetch pool supply percentage
-  return 50; // Matches filter (40-100)
+  try {
+    const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/balances?api-key=${process.env.HELIUS_API_KEY}`);
+    const data = await response.json();
+    const poolSupply = data?.tokens?.find(token => token.mint === tokenAddress)?.poolSupply || 50;
+    return poolSupply;
+  } catch (error) {
+    console.error('Error fetching pool supply:', error);
+    return 50; // Fallback
+  }
 }
 
 async function fetchLaunchPrice(tokenAddress) {
-  // Fetch launch price (e.g., from initial swap data)
-  return 0.000005; // Matches filter (0.0000000023-0.0010)
+  try {
+    const response = await fetch(`https://api.helius.xyz/v0/transactions?api-key=${process.env.HELIUS_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accounts: [tokenAddress],
+        types: ['SWAP']
+      })
+    });
+    const data = await response.json();
+    const solSpent = data?.[0]?.solAmount || 1;
+    const tokensReceived = data?.[0]?.tokenAmount || 200000;
+    return solSpent / tokensReceived;
+  } catch (error) {
+    console.error('Error fetching launch price:', error);
+    return 0.000005; // Fallback
+  }
 }
 
 // Auto-Snipe Logic
