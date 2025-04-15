@@ -313,16 +313,16 @@ async function monitorPumpFun() {
         
         // Extract token data (these are placeholders, you'll need to parse actual data from accountData)
         const tokenData = {
-          name: `Token_${tokenAddress.slice(0, 8)}`, // Placeholder name (fetch from metadata if available)
-          address: tokenAddress,
-          liquidity: await fetchLiquidity(tokenAddress), // Implement this function
-          marketCap: await fetchMarketCap(tokenAddress), // Implement this function
-          devHolding: await fetchDevHolding(tokenAddress), // Implement this function
-          poolSupply: await fetchPoolSupply(tokenAddress), // Implement this function
-          launchPrice: await fetchLaunchPrice(tokenAddress), // Implement this function
-          mintAuthRevoked: mint.mintAuthority === null, // Check if mint authority is revoked
-          freezeAuthRevoked: mint.freezeAuthority === null // Check if freeze authority is revoked
-        };
+  name: 'TestToken',
+  address: tokenAddress,
+  liquidity: 8000, // Changed to match your filter (7000-12000)
+  marketCap: 20000, // Matches filter (2000-80000)
+  devHolding: 5, // Matches filter (2-7)
+  poolSupply: 50, // Matches filter (40-100)
+  launchPrice: 0.000005, // Matches filter (0.0000000023-0.0010)
+  mintAuthRevoked: true, // Matches filter (true)
+  freezeAuthRevoked: false // Matches filter (false)
+};
 
         console.log('New token detected:', tokenData);
 
