@@ -37,7 +37,7 @@ app.post(`/bot${token}`, (req, res) => {
 // Telegram Bot Logic
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
-  👋 Welcome to @MoonSniperBot  // Replace @MoonSniperBot with your bot's actual username
+  👋 Welcome to @moongraphi_bot // Replace @Moongraphi_bot with your bot's actual username
   💰 Trade  |  🔐 Wallet
   ⚙️ Filters  |  📊 Portfolio
   ❓ Help
