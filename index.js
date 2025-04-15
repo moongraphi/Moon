@@ -359,6 +359,8 @@ async function fetchMarketCap(tokenAddress) {
   return 20000; // Matches filter (2000-80000)
 }
 
+async fu}
+
 async function fetchDevHolding(tokenAddress) {
   // Fetch dev holding percentage (e.g., by checking token distribution)
   return 5; // Matches filter (2-7)
@@ -390,31 +392,7 @@ async function autoSnipeToken(tokenAddress) {
     );
 
     const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);
-    console.log(`Bought token ${tokenAddress} with signature ${signature}`);
-
-    bot.sendMessage(process.env.CHAT_ID, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
-  } catch (error) {
-    console.error('Error auto-sniping token:', error);
-    bot.sendMessage(process.env.CHAT_ID, `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
-  }
-}
-
-// Send Token Alert
-function sendTokenAlert(chatId, tokenData) {
-  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
-  bot.sendMessage(chatId, `
-  🔥 New Meme Coin on Pump.fun!
-  📜 Name: ${tokenData.name}
-  📍 Contract: ${tokenData.address}
-  💧 Liquidity: $${tokenData.liquidity}
-  📈 Market Cap: $${tokenData.marketCap}
-  💸 Launch Price: ${tokenData.launchPrice} SOL
-  👨‍💻 Dev Holding: ${tokenData.devHolding}%
-  🏦 Pool Supply: ${tokenData.poolSupply}%
-  🟢 Mint Auth: ${tokenData.mintAuthRevoked ? 'Revoked' : 'Not Revoked'}
-  🔴 Freeze Auth: ${tokenData.freezeAuthRevoked ? 'Revoked' : 'Not Revoked'}
-  📊 Chart: [View Chart](${chartLink})
-  `, {
+    consol
     reply_markup: {
       inline_keyboard: [
         [{ text: '🔄 Refresh', callback_data: `refresh_${tokenData.address}` }, { text: '💰 Buy Now', callback_data: `buy_${tokenData.address}` }],
@@ -442,7 +420,64 @@ function checkToken(tokenData) {
     tokenData.freezeAuthRevoked === filters.freezeAuthRevoked
   );
 }
+async function monitorPumpFun() {
+  console.log('Starting Pump.fun monitoring...');
+  const tokenAddress = 'DUMMY_ADDRESS_' + Date.now();
+  const tokenData = {
+    name: 'TestToken',
+    address: tokenAddress,
+    liquidity: 8000,
+    marketCap: 20000,
+    devHolding: 5,
+    poolSupply: 50,
+    launchPrice: 0.000005,
+    mintAuthRevoked: true,
+    freezeAuthRevoked: false
+  };
 
+  const userFilters = filters['default'] || {
+    liquidity: { min: 7000, max: 12000 },
+    marketCap: { min: 2000, max: 80000 },
+    devHolding: { min: 2, max: 7 },
+    poolSupply: { min: 40, max: 100 },
+    launchPrice: { min: 0.0000000023, max: 0.0010 },
+    mintAuthRevoked: true,
+    freezeAuthRevoked: false
+  };
+
+  if (
+    tokenData.liquidity >= userFilters.liquidity.min &&
+    tokenData.liquidity <= userFilters.liquidity.max &&
+    tokenData.marketCap >= userFilters.marketCap.min &&
+    tokenData.marketCap <= userFilters.marketCap.max &&
+    tokenData.devHolding >= userFilters.devHolding.min &&
+    tokenData.devHolding <= userFilters.devHolding.max &&
+    tokenData.poolSupply >= userFilters.poolSupply.min &&
+    tokenData.poolSupply <= userFilters.poolSupply.max &&
+    tokenData.launchPrice >= userFilters.launchPrice.min &&
+    tokenData.launchPrice <= userFilters.launchPrice.max &&
+    tokenData.mintAuthRevoked === userFilters.mintAuthRevoked &&
+    tokenData.freezeAuthRevoked === userFilters.freezeAuthRevoked
+  ) {
+    const alertMessage = `
+    🔥 New Meme Coin on Pump.fun!
+    📜 Name: ${tokenData.name}
+    📍 Contract: ${tokenData.address}
+    💧 Liquidity: $${tokenData.liquidity}
+    📈 Market Cap: $${tokenData.marketCap}
+    🛠 Dev Holding: ${tokenData.devHolding}%
+    💦 Pool Supply: ${tokenData.poolSupply}%
+    💸 Launch Price: $${tokenData.launchPrice}
+    🔒 Mint Auth Revoked: ${tokenData.mintAuthRevoked}
+    🥶 Freeze Auth Revoked: ${tokenData.freezeAuthRevoked}
+    `;
+    bot.sendMessage('-1002511600127', alertMessage); // Replace with your chat ID
+  }
+
+  setTimeout(monitorPumpFun, 60000); // Run every 60 seconds
+}
+
+monitorPumpFun();
 // Helius Webhook (for backup)
 app.post('/webhook', async (req, res) => {
   try {
