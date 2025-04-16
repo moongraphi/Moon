@@ -1,0 +1,54 @@
+function extractTokenInfo(tx) {
+  // TODO: Logic to extract token metadata like:
+  // - liquidity
+  // - marketCap
+  // - devHolding
+  // - poolSupply
+  // - launchPrice
+  // - mintAuthRevoked
+  // - freezeAuthRevoked
+  // Make sure it returns an object like:
+  return {
+    name: "EXAMPLE",
+    liquidity: 5000,
+    marketCap: 10000,
+    devHolding: 10,
+    poolSupply: 60,
+    launchPrice: 0.0000005,
+    mintAuthRevoked: true,
+    freezeAuthRevoked: true,
+    mint: "TOKEN_MINT_ADDRESS"
+  };
+}
+
+function checkAgainstFilters(token) {
+  return (
+    token.liquidity >= filters.liquidity.min &&
+    token.liquidity <= filters.liquidity.max &&
+    token.marketCap >= filters.marketCap.min &&
+    token.marketCap <= filters.marketCap.max &&
+    token.devHolding >= filters.devHolding.min &&
+    token.devHolding <= filters.devHolding.max &&
+    token.poolSupply >= filters.poolSupply.min &&
+    token.poolSupply <= filters.poolSupply.max &&
+    token.launchPrice >= filters.launchPrice.min &&
+    token.launchPrice <= filters.launchPrice.max &&
+    (filters.mintAuthRevoked === false || token.mintAuthRevoked === true) &&
+    (filters.freezeAuthRevoked === false || token.freezeAuthRevoked === true)
+  );
+}
+
+function formatTokenMessage(token) {
+  return `
+🚀 *New Meme Coin Detected!*
+🔤 Name: ${token.name}
+💧 Liquidity: ${token.liquidity}
+📈 Market Cap: ${token.marketCap}
+👨‍💻 Dev Holding: ${token.devHolding}%
+🏊 Pool Supply: ${token.poolSupply}%
+💰 Launch Price: ${token.launchPrice}
+✅ Mint Auth Revoked: ${token.mintAuthRevoked ? 'Yes' : 'No'}
+❄️ Freeze Auth Revoked: ${token.freezeAuthRevoked ? 'Yes' : 'No'}
+🔗 https://pump.fun/${token.mint}
+  `;
+}
