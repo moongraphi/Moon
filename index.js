@@ -536,4 +536,47 @@ app.post('/webhook', async (req, res) => {
     const tokenData = req.body[0];
     if (!tokenData) {
       console.log('No token data found in webhook payload');
-      ret
+      return res.status(200).send('No data');
+    }
+
+    const enrichedData = {
+      name: tokenData.token?.metadata?.name || 'Unknown',
+      address: tokenData.token?.address || 'Unknown',
+      liquidity: tokenData.liquidity || 8000,
+      marketCap: tokenData.marketCap || 20000,
+      devHolding: tokenData.devHolding || 5,
+      poolSupply: tokenData.poolSupply || 50,
+      launchPrice: calculateLaunchPrice(tokenData),
+      mintAuthRevoked: tokenData.mintAuthRevoked || true,
+      freezeAuthRevoked: tokenData.freezeAuthRevoked || false
+    };
+
+    lastTokenData = enrichedData;
+
+    if (checkToken(enrichedData)) {
+      sendTokenAlert('-1002511600127', enrichedData);
+      await autoSnipeToken(enrichedData.address);
+    } else {
+      console.log('Token does not pass filters:', enrichedData);
+    }
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(200).send('OK');
+  }
+});
+
+function calculateLaunchPrice(tokenData) {
+  const solSpent = tokenData.initialSwap?.solAmount || 1;
+  const tokensReceived = tokenData.initialSwap?.tokenAmount || 200000;
+  return solSpent / tokensReceived;
+}
+
+// Health Check
+app.get('/', (req, res) => res.send('Bot running!'));
+
+// Start Server and Monitoring
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  monitorPumpFun();
+});
