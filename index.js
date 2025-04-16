@@ -301,44 +301,80 @@ bot.on('message', (msg) => {
 // Monitor Pump.fun for New Tokens (Real Monitoring)
 async function monitorPumpFun() {
   console.log('Starting Pump.fun monitoring...');
-  connection.onProgramAccountChange(
-    PUMP_FUN_PROGRAM,
-    async (keyedAccountInfo) => {
-      try {
-        const accountData = keyedAccountInfo.accountInfo.data;
-        const tokenAddress = keyedAccountInfo.accountId.toString();
+  try {
+    connection.onProgramAccountChange(
+      PUMP_FUN_PROGRAM,
+      async (keyedAccountInfo) => {
+        console.log('Program account change detected:', keyedAccountInfo);
+        try {
+          const accountData = keyedAccountInfo.accountInfo.data;
+          const tokenAddress = keyedAccountInfo.accountId.toString();
+          console.log('Token address:', tokenAddress);
 
-        // Fetch token metadata from Solana
-        const mint = await getMint(connection, new PublicKey(tokenAddress), 'confirmed', TOKEN_PROGRAM_ID);
+          // Fetch token metadata from Solana
+          console.log('Fetching token metadata...');
+          const mint = await getMint(connection, new PublicKey(tokenAddress), 'confirmed', TOKEN_PROGRAM_ID);
+          console.log('Token metadata fetched:', mint);
 
-        // Fetch real data using implemented functions
-        const tokenData = {
-          name: `Token_${tokenAddress.slice(0, 8)}`, // Placeholder name (fetch from metadata if available)
-          address: tokenAddress,
-          liquidity: await fetchLiquidity(tokenAddress),
-          marketCap: await fetchMarketCap(tokenAddress),
-          devHolding: await fetchDevHolding(tokenAddress),
-          poolSupply: await fetchPoolSupply(tokenAddress),
-          launchPrice: await fetchLaunchPrice(tokenAddress),
-          mintAuthRevoked: mint.mintAuthority === null,
-          freezeAuthRevoked: mint.freezeAuthority === null
-        };
+          // Fetch real data using implemented functions
+          console.log('Fetching liquidity...');
+          const liquidity = await fetchLiquidity(tokenAddress);
+          console.log('Liquidity:', liquidity);
 
-        console.log('New token detected:', tokenData);
+          console.log('Fetching market cap...');
+          const marketCap = await fetchMarketCap(tokenAddress);
+          console.log('Market Cap:', marketCap);
 
-        lastTokenData = tokenData;
+          console.log('Fetching dev holding...');
+          const devHolding = await fetchDevHolding(tokenAddress);
+          console.log('Dev Holding:', devHolding);
 
-        if (checkToken(tokenData)) {
-          console.log('Token passed filters:', tokenData);
-          sendTokenAlert('-1002511600127', tokenData);
-          await autoSnipeToken(tokenData.address);
-        } else {
-          console.log('Token does not pass filters:', tokenData);
+          console.log('Fetching pool supply...');
+          const poolSupply = await fetchPoolSupply(tokenAddress);
+          console.log('Pool Supply:', poolSupply);
+
+          console.log('Fetching launch price...');
+          const launchPrice = await fetchLaunchPrice(tokenAddress);
+          console.log('Launch Price:', launchPrice);
+
+          const tokenData = {
+            name: `Token_${tokenAddress.slice(0, 8)}`,
+            address: tokenAddress,
+            liquidity: liquidity,
+            marketCap: marketCap,
+            devHolding: devHolding,
+            poolSupply: poolSupply,
+            launchPrice: launchPrice,
+            mintAuthRevoked: mint.mintAuthority === null,
+            freezeAuthRevoked: mint.freezeAuthority === null
+          };
+
+          console.log('New token detected:', tokenData);
+
+          lastTokenData = tokenData;
+
+          if (checkToken(tokenData)) {
+            console.log('Token passed filters:', tokenData);
+            sendTokenAlert('-1002511600127', tokenData);
+            await autoSnipeToken(tokenData.address);
+          } else {
+            console.log('Token does not pass filters:', tokenData);
+            console.log('Filters:', filters);
+          }
+        } catch (error) {
+          console.error('Error processing token:', error);
         }
-      } catch (error) {
-        console.error('Error monitoring Pump.fun:', error);
-      }
-    },
+      },
+      'confirmed',
+      [
+        { dataSize: 165 },
+        { memcmp: { offset: 0, bytes: 'create' } }
+      ]
+    );
+  } catch (error) {
+    console.error('Error setting up program account change listener:', error);
+  }
+}
     'confirmed',
     [
       { dataSize: 165 }, // Adjust based on Pump.fun account data size
@@ -348,12 +384,15 @@ async function monitorPumpFun() {
 }
 
 // Fetch real data using Helius API
+// Fetch real data using Helius API
 async function fetchLiquidity(tokenAddress) {
   try {
     const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/balances?api-key=${process.env.HELIUS_API_KEY}`);
     const data = await response.json();
-    const liquidity = data?.tokens?.find(token => token.mint === tokenAddress)?.liquidity || 8000;
-    return liquidity;
+    console.log('Helius API response for liquidity:', data);
+    // Pump.fun tokens ke liye liquidity pool ka data
+    const liquidity = data?.tokens?.find(token => token.mint === tokenAddress)?.amount || 0;
+    return liquidity / 1e9 || 8000; // Convert lamports to SOL, fallback to 8000 if no data
   } catch (error) {
     console.error('Error fetching liquidity:', error);
     return 8000; // Fallback
@@ -362,10 +401,17 @@ async function fetchLiquidity(tokenAddress) {
 
 async function fetchMarketCap(tokenAddress) {
   try {
-    const response = await fetch(`https://api.helius.xyz/v0/tokens/${tokenAddress}?api-key=${process.env.HELIUS_API_KEY}`);
+    const response = await fetch(`https://api.helius.xyz/v0/tokens/metadata?api-key=${process.env.HELIUS_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mintAccounts: [tokenAddress] })
+    });
     const data = await response.json();
-    const totalSupply = data?.totalSupply || 1_000_000_000;
-    const price = data?.price || 0.00002;
+    console.log('Helius API response for market cap:', data);
+    const totalSupply = data[0]?.onChainData?.supply || 1_000_000_000;
+    const priceResponse = await fetch(`https://api.helius.xyz/v0/tokens/price?api-key=${process.env.HELIUS_API_KEY}&id=${tokenAddress}`);
+    const priceData = await priceResponse.json();
+    const price = priceData?.price || 0.00002;
     return totalSupply * price;
   } catch (error) {
     console.error('Error fetching market cap:', error);
@@ -377,8 +423,10 @@ async function fetchDevHolding(tokenAddress) {
   try {
     const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/holders?api-key=${process.env.HELIUS_API_KEY}`);
     const data = await response.json();
-    const topHolder = data?.holders?.[0]?.percentage || 5;
-    return topHolder;
+    console.log('Helius API response for dev holding:', data);
+    const topHolder = data?.holders?.[0]?.amount || 0;
+    const totalSupply = data?.totalSupply || 1_000_000_000;
+    return (topHolder / totalSupply) * 100 || 5; // Percentage of top holder
   } catch (error) {
     console.error('Error fetching dev holding:', error);
     return 5; // Fallback
@@ -389,8 +437,10 @@ async function fetchPoolSupply(tokenAddress) {
   try {
     const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/balances?api-key=${process.env.HELIUS_API_KEY}`);
     const data = await response.json();
-    const poolSupply = data?.tokens?.find(token => token.mint === tokenAddress)?.poolSupply || 50;
-    return poolSupply;
+    console.log('Helius API response for pool supply:', data);
+    const poolSupply = data?.tokens?.find(token => token.mint === tokenAddress)?.amount || 0;
+    const totalSupply = data?.totalSupply || 1_000_000_000;
+    return (poolSupply / totalSupply) * 100 || 50; // Percentage of pool supply
   } catch (error) {
     console.error('Error fetching pool supply:', error);
     return 50; // Fallback
@@ -404,9 +454,20 @@ async function fetchLaunchPrice(tokenAddress) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         accounts: [tokenAddress],
-        types: ['SWAP']
+        types: ['SWAP'],
+        limit: 1
       })
     });
+    const data = await response.json();
+    console.log('Helius API response for launch price:', data);
+    const solSpent = data?.[0]?.nativeTransfers?.[0]?.amount || 1;
+    const tokensReceived = data?.[0]?.tokenTransfers?.[0]?.amount || 200000;
+    return (solSpent / 1e9) / tokensReceived || 0.000005; // Convert lamports to SOL
+  } catch (error) {
+    console.error('Error fetching launch price:', error);
+    return 0.000005; // Fallback
+  }
+}
     const data = await response.json();
     const solSpent = data?.[0]?.solAmount || 1;
     const tokensReceived = data?.[0]?.tokenAmount || 200000;
