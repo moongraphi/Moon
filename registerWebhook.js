@@ -1,22 +1,24 @@
 const axios = require("axios");
+require("dotenv").config();
 
-const apiKey = "2922185d-63a2-429b-b209-e98d75c3aaaa";
-const webhookURL = "https://moon-ovgg.onrender.com/webhook";
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // e.g., your Render domain with https
 
-const data = {
-  webhookURL: webhookURL,
-  transactionTypes: ["ALL"],
-  webhookType: "enhanced",
-  accountAddresses: []
+const registerWebhook = async () => {
+  try {
+    const response = await axios.get(
+      `https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`,
+      {
+        params: {
+          url: WEBHOOK_URL
+        }
+      }
+    );
+
+    console.log("Webhook set:", response.data);
+  } catch (error) {
+    console.error("Error Registering Webhook:", error.response?.data || error);
+  }
 };
 
-axios
-  .post(`https://api.helius.xyz/v0/webhooks?api-key=${apiKey}`, data, {
-    headers: { "Content-Type": "application/json" },
-  })
-  .then((res) => {
-    console.log("Webhook Registered:", res.data);
-  })
-  .catch((err) => {
-    console.error("Error Registering Webhook:", err.response?.data || err.message);
-  });
+registerWebhook();
