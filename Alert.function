@@ -1,0 +1,24 @@
+const axios = require('axios');
+
+async function checkNewTokens() {
+  try {
+    const response = await axios.get(`https://api.helius.xyz/v0/addresses/${PUMP_FUN_PROGRAM.toBase58()}/transactions?api-key=${process.env.HELIUS_API_KEY}&limit=5`);
+    const txs = response.data;
+
+    for (let tx of txs) {
+      
+      const tokenInfo = extractTokenInfo(tx);
+      if (!tokenInfo) continue;
+
+      const passed = checkAgainstFilters(tokenInfo);
+      if (passed) {
+        const message = formatTokenMessage(tokenInfo);
+        bot.sendMessage(process.env.CHAT_ID, message);
+      }
+    }
+  } catch (err) {
+    console.error("Token check error:", err.message);
+  }
+}
+
+setInterval(checkNewTokens, 10000); 
