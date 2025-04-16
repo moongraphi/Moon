@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: false });
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`);
-const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT');
 
 app.use(express.json());
 
@@ -375,22 +375,13 @@ async function monitorPumpFun() {
     console.error('Error setting up program account change listener:', error);
   }
 }
-    'confirmed',
-    [
-      { dataSize: 165 }, // Adjust based on Pump.fun account data size
-      { memcmp: { offset: 0, bytes: 'create' } } // Filter for token creation events
-    ]
-  );
-}
 
-// Fetch real data using Helius API
 // Fetch real data using Helius API
 async function fetchLiquidity(tokenAddress) {
   try {
     const response = await fetch(`https://api.helius.xyz/v0/addresses/${tokenAddress}/balances?api-key=${process.env.HELIUS_API_KEY}`);
     const data = await response.json();
     console.log('Helius API response for liquidity:', data);
-    // Pump.fun tokens ke liye liquidity pool ka data
     const liquidity = data?.tokens?.find(token => token.mint === tokenAddress)?.amount || 0;
     return liquidity / 1e9 || 8000; // Convert lamports to SOL, fallback to 8000 if no data
   } catch (error) {
@@ -463,15 +454,6 @@ async function fetchLaunchPrice(tokenAddress) {
     const solSpent = data?.[0]?.nativeTransfers?.[0]?.amount || 1;
     const tokensReceived = data?.[0]?.tokenTransfers?.[0]?.amount || 200000;
     return (solSpent / 1e9) / tokensReceived || 0.000005; // Convert lamports to SOL
-  } catch (error) {
-    console.error('Error fetching launch price:', error);
-    return 0.000005; // Fallback
-  }
-}
-    const data = await response.json();
-    const solSpent = data?.[0]?.solAmount || 1;
-    const tokensReceived = data?.[0]?.tokenAmount || 200000;
-    return solSpent / tokensReceived;
   } catch (error) {
     console.error('Error fetching launch price:', error);
     return 0.000005; // Fallback
@@ -554,47 +536,4 @@ app.post('/webhook', async (req, res) => {
     const tokenData = req.body[0];
     if (!tokenData) {
       console.log('No token data found in webhook payload');
-      return res.status(200).send('No data');
-    }
-
-    const enrichedData = {
-      name: tokenData.token?.metadata?.name || 'Unknown',
-      address: tokenData.token?.address || 'Unknown',
-      liquidity: tokenData.liquidity || 8000,
-      marketCap: tokenData.marketCap || 20000,
-      devHolding: tokenData.devHolding || 5,
-      poolSupply: tokenData.poolSupply || 50,
-      launchPrice: calculateLaunchPrice(tokenData),
-      mintAuthRevoked: tokenData.mintAuthRevoked || true,
-      freezeAuthRevoked: tokenData.freezeAuthRevoked || false
-    };
-
-    lastTokenData = enrichedData;
-
-    if (checkToken(enrichedData)) {
-      sendTokenAlert('-1002511600127', enrichedData);
-      await autoSnipeToken(enrichedData.address);
-    } else {
-      console.log('Token does not pass filters:', enrichedData);
-    }
-    res.status(200).send('OK');
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(200).send('OK');
-  }
-});
-
-function calculateLaunchPrice(tokenData) {
-  const solSpent = tokenData.initialSwap?.solAmount || 1;
-  const tokensReceived = tokenData.initialSwap?.tokenAmount || 200000;
-  return solSpent / tokensReceived;
-}
-
-// Health Check
-app.get('/', (req, res) => res.send('Bot running!'));
-
-// Start Server and Monitoring
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  monitorPumpFun();
-});
+      ret
