@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: false });
-const connection = new Connection('https://api.mainnet-beta.solana.com', { commitment: 'confirmed' });
+const connection = new Connectionhttps://mainnet.helius-rpc.com/?api-key=2922185d-63a2-429b-b209-e98d75c3aaaa { commitment: 'confirmed' });
 const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT');
 
 app.use(express.json());
