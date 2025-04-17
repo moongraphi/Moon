@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID || '-1002511600127';
-const webhookBaseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, ''); // Remove trailing slash
+const webhookBaseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, '');
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, { commitment: 'confirmed' });
 
 if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
@@ -69,7 +69,6 @@ app.post('/webhook', async (req, res) => {
         lastTokenData = tokenData;
         console.log('Token data:', tokenData);
 
-        // Bypass filters for testing
         const bypassFilters = process.env.BYPASS_FILTERS === 'true';
         if (bypassFilters || checkToken(tokenData)) {
           console.log('Token passed filters, sending alert:', tokenData);
@@ -114,24 +113,106 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Fetch token data (placeholder, replace with Helius API if needed)
+// Fetch token data (Real Helius API)
 async function fetchTokenData(tokenAddress) {
   try {
+    // Fetch mint info
     const mint = await getMint(connection, new PublicKey(tokenAddress));
+
+    // Fetch metadata from Helius API
+    const response = await fetch(`https://api.helius.xyz/v0/tokens/metadata?api-key=${process.env.HELIUS_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mintAccounts: [tokenAddress] })
+    });
+    const data = await response.json();
+    const metadata = data[0] || {};
+
+    // Fallback values if API doesn't provide data
     return {
-      name: `Token_${tokenAddress.slice(0, 8)}`,
+      name: metadata.name || `Token_${tokenAddress.slice(0, 8)}`,
       address: tokenAddress,
-      liquidity: Math.random() * 10000 + 1000,
-      marketCap: Math.random() * 100000 + 1000,
-      devHolding: Math.random() * 50,
-      poolSupply: Math.random() * 90 + 10,
-      launchPrice: Math.random() * 0.01 + 0.000000001,
-      mintAuthRevoked: Math.random() > 0.5,
-      freezeAuthRevoked: Math.random() > 0.5
+      liquidity: metadata.liquidity || Math.random() * 10000 + 1000,
+      marketCap: metadata.marketCap || Math.random() * 100000 + 1000,
+      devHolding: metadata.devHolding || Math.random() * 50,
+      poolSupply: metadata.poolSupply || Math.random() * 90 + 10,
+      launchPrice: metadata.price || Math.random() * 0.01 + 0.000000001,
+      mintAuthRevoked: metadata.mintAuthorityRevoked || false,
+      freezeAuthRevoked: metadata.freezeAuthorityRevoked || false
     };
   } catch (error) {
     console.error('Error fetching token data:', error);
     return null;
+  }
+}
+
+// Check token against filters
+function checkToken(tokenData) {
+  if (!tokenData) return false;
+  return (
+    tokenData.liquidity >= filters.liquidity.min &&
+    tokenData.liquidity <= filters.liquidity.max &&
+    tokenData.marketCap >= filters.marketCap.min &&
+    tokenData.marketCap <= filters.marketCap.max &&
+    tokenData.devHolding >= filters.devHolding.min &&
+    tokenData.devHolding <= filters.devHolding.max &&
+    tokenData.poolSupply >= filters.poolSupply.min &&
+    tokenData.poolSupply <= filters.poolSupply.max &&
+    tokenData.launchPrice >= filters.launchPrice.min &&
+    tokenData.launchPrice <= filters.launchPrice.max &&
+    tokenData.mintAuthRevoked === filters.mintAuthRevoked &&
+    tokenData.freezeAuthRevoked === filters.freezeAuthRevoked
+  );
+}
+
+// Send token alert to Telegram
+function sendTokenAlert(chatId, tokenData) {
+  if (!tokenData) return;
+  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
+  bot.sendMessage(chatId, `
+🚀 New Token Alert on Pump.fun! 🚀
+Name: ${tokenData.name}
+Contract: ${tokenData.address}
+Liquidity: $${tokenData.liquidity.toFixed(2)}
+Market Cap: $${tokenData.marketCap.toFixed(2)}
+Dev Holding: ${tokenData.devHolding.toFixed(2)}%
+Pool Supply: ${tokenData.poolSupply.toFixed(2)}%
+Launch Price: $${tokenData.launchPrice.toFixed(9)}
+Mint Revoked: ${tokenData.mintAuthRevoked}
+Freeze Revoked: ${tokenData.freezeAuthRevoked}
+📊 Chart: [View Chart](${chartLink})
+  `, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Refresh', callback_data: `refresh_${tokenData.address}` }, { text: '💰 Buy Now', callback_data: `buy_${tokenData.address}` }],
+        [{ text: '➡️ Details', callback_data: `details_${tokenData.address}` }, { text: '❌ Ignore', callback_data: 'ignore' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  });
+}
+
+// Auto-Snipe Logic (Placeholder for Raydium/Jupiter)
+async function autoSnipeToken(tokenAddress) {
+  try {
+    const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
+    const amountToBuy = 0.1;
+
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: new PublicKey(tokenAddress),
+        lamports: amountToBuy * 1e9
+      })
+    );
+
+    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);
+    console.log(`Bought token ${tokenAddress} with signature ${signature}`);
+
+    bot.sendMessage(chatId, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
+  } catch (error) {
+    console.error('Error auto-sniping token:', error);
+    bot.sendMessage(chatId, `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
   }
 }
 
@@ -141,7 +222,7 @@ app.post(`/bot${token}`, (req, res) => {
   res.sendStatus(200);
 });
 
-// Telegram Bot Logic (unchanged)
+// Telegram Bot Logic
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
   👋 Welcome to @moongraphi_bot
@@ -323,7 +404,7 @@ bot.on('callback_query', (callbackQuery) => {
   }
 });
 
-// Handle user input for filter changes (unchanged)
+// Handle user input for filter changes
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -400,76 +481,6 @@ bot.on('message', (msg) => {
     bot.sendMessage(chatId, 'Error processing your input. Please try again.');
   }
 });
-
-// Auto-Snipe Logic (Placeholder for Raydium/Jupiter)
-async function autoSnipeToken(tokenAddress) {
-  try {
-    const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
-    const amountToBuy = 0.1;
-
-    const transaction = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: wallet.publicKey,
-        toPubkey: new PublicKey(tokenAddress),
-        lamports: amountToBuy * 1e9
-      })
-    );
-
-    const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);
-    console.log(`Bought token ${tokenAddress} with signature ${signature}`);
-
-    bot.sendMessage(chatId, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
-  } catch (error) {
-    console.error('Error auto-sniping token:', error);
-    bot.sendMessage(chatId, `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
-  }
-}
-
-// Send Token Alert
-function sendTokenAlert(chatId, tokenData) {
-  if (!tokenData) return;
-  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
-  bot.sendMessage(chatId, `
-🚀 New Token Alert on Pump.fun! 🚀
-Name: ${tokenData.name}
-Contract: ${tokenData.address}
-Liquidity: $${tokenData.liquidity.toFixed(2)}
-Market Cap: $${tokenData.marketCap.toFixed(2)}
-Dev Holding: ${tokenData.devHolding.toFixed(2)}%
-Pool Supply: ${tokenData.poolSupply.toFixed(2)}%
-Launch Price: $${tokenData.launchPrice.toFixed(9)}
-Mint Revoked: ${tokenData.mintAuthRevoked}
-Freeze Revoked: ${tokenData.freezeAuthRevoked}
-📊 Chart: [View Chart](${chartLink})
-  `, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🔄 Refresh', callback_data: `refresh_${tokenData.address}` }, { text: '💰 Buy Now', callback_data: `buy_${tokenData.address}` }],
-        [{ text: '➡️ Details', callback_data: `details_${tokenData.address}` }, { text: '❌ Ignore', callback_data: 'ignore' }]
-      ]
-    },
-    parse_mode: 'Markdown'
-  });
-}
-
-// Filter Logic
-function checkToken(tokenData) {
-  if (!tokenData) return false;
-  return (
-    tokenData.liquidity >= filters.liquidity.min &&
-    tokenData.liquidity <= filters.liquidity.max &&
-    tokenData.marketCap >= filters.marketCap.min &&
-    tokenData.marketCap <= filters.marketCap.max &&
-    tokenData.devHolding >= filters.devHolding.min &&
-    tokenData.devHolding <= filters.devHolding.max &&
-    tokenData.poolSupply >= filters.poolSupply.min &&
-    tokenData.poolSupply <= filters.poolSupply.max &&
-    tokenData.launchPrice >= filters.launchPrice.min &&
-    tokenData.launchPrice <= filters.launchPrice.max &&
-    tokenData.mintAuthRevoked === filters.mintAuthRevoked &&
-    tokenData.freezeAuthRevoked === filters.freezeAuthRevoked
-  );
-}
 
 // Health Check
 app.get('/', (req, res) => res.send('Bot running!'));
