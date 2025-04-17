@@ -8,14 +8,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: false });
-const connection = new Connectionhttps://mainnet.helius-rpc.com/?api-key=2922185d-63a2-429b-b209-e98d75c3aaaa { commitment: 'confirmed' });
-const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT');
+const connection = new Connection('https://mainnet.helius-rpc.com /?api-key=2922185-632-429b-b209-e98d75c3
+
+aaaa', { commitment: 'confirmed' });
+
+const bot new TelegramBot(token, { polling: false }); const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5 qL78xJ6nQozT');
 
 app.use(express.json());
 
 // Set webhook
-bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
 
+bot.setWebHook($ {process.env.WEBHOOK_URL}/bot${token}');
 // In-memory storage (Render free tier)
 let walletKey = null;
 let filters = {
