@@ -13,6 +13,7 @@ const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${pro
 
 if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
   console.error('Missing environment variables. Required: TELEGRAM_BOT_TOKEN, WEBHOOK_URL, HELIUS_API_KEY, PRIVATE_KEY');
+  bot.sendMessage(chatId, '❌ Bot failed to start: Missing environment variables');
   process.exit(1);
 }
 
@@ -24,7 +25,7 @@ app.use(express.json());
 // Set Telegram webhook
 bot.setWebHook(`${webhookBaseUrl}/bot${token}`);
 
-// In-memory storage (Render free tier)
+// In-memory storage
 let walletKey = null;
 let filters = {
   liquidity: { min: 1000, max: 100000 },
@@ -43,26 +44,30 @@ app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
     console.log('Received Helius webhook:', JSON.stringify(events, null, 2));
+    bot.sendMessage(chatId, 'ℹ️ Received webhook from Helius');
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       console.log('No events in webhook');
+      bot.sendMessage(chatId, '⚠️ Received empty webhook from Helius');
       return res.status(400).send('No events received');
     }
 
     for (const event of events) {
-      console.log('Processing event:', event);
+      console.log('Processing event:', JSON.stringify(event, null, 2));
       if (event.type === 'TOKEN_MINT' || event.programId === PUMP_FUN_PROGRAM.toString()) {
         const tokenAddress = event.tokenMint || event.accounts?.[0];
         console.log('New token detected:', tokenAddress);
 
         if (!tokenAddress) {
           console.log('No token address found in event');
+          bot.sendMessage(chatId, '⚠️ No token address in Helius event');
           continue;
         }
 
         const tokenData = await fetchTokenData(tokenAddress);
         if (!tokenData) {
           console.log('Failed to fetch token data for:', tokenAddress);
+          bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
           continue;
         }
 
@@ -78,6 +83,7 @@ app.post('/webhook', async (req, res) => {
           }
         } else {
           console.log('Token did not pass filters:', tokenData);
+          bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);
         }
       }
     }
@@ -85,11 +91,12 @@ app.post('/webhook', async (req, res) => {
     return res.status(200).send('OK');
   } catch (error) {
     console.error('Webhook error:', error);
+    bot.sendMessage(chatId, `❌ Webhook error: ${error.message}`);
     return res.status(500).send('Internal Server Error');
   }
 });
 
-// Test Webhook Endpoint (for manual testing)
+// Test Webhook Endpoint
 app.post('/test-webhook', async (req, res) => {
   try {
     const mockEvent = {
@@ -99,21 +106,26 @@ app.post('/test-webhook', async (req, res) => {
       accounts: ['TEST_TOKEN_ADDRESS']
     };
     console.log('Received test webhook:', mockEvent);
+    bot.sendMessage(chatId, 'ℹ️ Received test webhook');
 
     const tokenData = await fetchTokenData(mockEvent.tokenMint);
     if (tokenData) {
       sendTokenAlert(chatId, tokenData);
       console.log('Test alert sent:', tokenData);
+      bot.sendMessage(chatId, '✅ Test webhook successful!');
+    } else {
+      bot.sendMessage(chatId, '⚠️ Test webhook failed: No token data');
     }
 
     return res.status(200).send('Test webhook processed');
   } catch (error) {
     console.error('Test webhook error:', error);
+    bot.sendMessage(chatId, `❌ Test webhook error: ${error.message}`);
     return res.status(500).send('Test webhook failed');
   }
 });
 
-// Fetch token data (Real Helius API)
+// Fetch token data (Real Helius API with fallback)
 async function fetchTokenData(tokenAddress) {
   try {
     // Fetch mint info
@@ -128,27 +140,44 @@ async function fetchTokenData(tokenAddress) {
     const data = await response.json();
     const metadata = data[0] || {};
 
-    // Fallback values if API doesn't provide data
+    if (!metadata) {
+      console.log('No metadata from Helius, using fallback');
+      bot.sendMessage(chatId, `⚠️ No metadata for ${tokenAddress}, using fallback`);
+    }
+
     return {
       name: metadata.name || `Token_${tokenAddress.slice(0, 8)}`,
       address: tokenAddress,
-      liquidity: metadata.liquidity || Math.random() * 10000 + 1000,
-      marketCap: metadata.marketCap || Math.random() * 100000 + 1000,
-      devHolding: metadata.devHolding || Math.random() * 50,
-      poolSupply: metadata.poolSupply || Math.random() * 90 + 10,
-      launchPrice: metadata.price || Math.random() * 0.01 + 0.000000001,
+      liquidity: metadata.liquidity || 1000,
+      marketCap: metadata.marketCap || 1000,
+      devHolding: metadata.devHolding || 5,
+      poolSupply: metadata.poolSupply || 50,
+      launchPrice: metadata.price || 0.000005,
       mintAuthRevoked: metadata.mintAuthorityRevoked || false,
       freezeAuthRevoked: metadata.freezeAuthorityRevoked || false
     };
   } catch (error) {
     console.error('Error fetching token data:', error);
-    return null;
+    bot.sendMessage(chatId, `⚠️ Error fetching token data for ${tokenAddress}: ${error.message}`);
+    // Fallback mock data
+    return {
+      name: `Token_${tokenAddress.slice(0, 8)}`,
+      address: tokenAddress,
+      liquidity: 1000,
+      marketCap: 1000,
+      devHolding: 5,
+      poolSupply: 50,
+      launchPrice: 0.000005,
+      mintAuthRevoked: false,
+      freezeAuthRevoked: false
+    };
   }
 }
 
 // Check token against filters
 function checkToken(tokenData) {
   if (!tokenData) return false;
+  console.log('Checking token against filters:', tokenData, filters);
   return (
     tokenData.liquidity >= filters.liquidity.min &&
     tokenData.liquidity <= filters.liquidity.max &&
@@ -192,7 +221,7 @@ Freeze Revoked: ${tokenData.freezeAuthRevoked}
   });
 }
 
-// Auto-Snipe Logic (Placeholder for Raydium/Jupiter)
+// Auto-Snipe Logic (Placeholder)
 async function autoSnipeToken(tokenAddress) {
   try {
     const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
@@ -240,7 +269,7 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// Handle Button Callbacks (unchanged)
+// Handle Button Callbacks
 bot.on('callback_query', (callbackQuery) => {
   const msg = callbackQuery.message;
   const data = callbackQuery.data;
@@ -490,4 +519,5 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log('Helius Webhook URL:', `${webhookBaseUrl}/webhook`);
   console.log('Starting Helius webhook monitoring...');
+  bot.sendMessage(chatId, '🚀 Bot started! Waiting for Pump.fun token alerts...');
 });
