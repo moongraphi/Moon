@@ -5,12 +5,13 @@ const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransac
 const { getMint, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const chatId = process.env.TELEGRAM_CHAT_ID || '-1002511600127'; // Default chat ID
+const chatId = process.env.TELEGRAM_CHAT_ID || '-1002511600127';
+const webhookBaseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, ''); // Remove trailing slash
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, { commitment: 'confirmed' });
 
-if (!token || !process.env.WEBHOOK_URL || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
+if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
   console.error('Missing environment variables. Required: TELEGRAM_BOT_TOKEN, WEBHOOK_URL, HELIUS_API_KEY, PRIVATE_KEY');
   process.exit(1);
 }
@@ -21,7 +22,7 @@ const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQ
 app.use(express.json());
 
 // Set Telegram webhook
-bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
+bot.setWebHook(`${webhookBaseUrl}/bot${token}`);
 
 // In-memory storage (Render free tier)
 let walletKey = null;
@@ -41,7 +42,7 @@ let userStates = {};
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
-    console.log('Received Helius webhook:', events);
+    console.log('Received Helius webhook:', JSON.stringify(events, null, 2));
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       console.log('No events in webhook');
@@ -49,17 +50,29 @@ app.post('/webhook', async (req, res) => {
     }
 
     for (const event of events) {
-      // Check if event is a token mint or Pump.fun related
+      console.log('Processing event:', event);
       if (event.type === 'TOKEN_MINT' || event.programId === PUMP_FUN_PROGRAM.toString()) {
-        const tokenAddress = event.tokenMint || event.accounts[0];
+        const tokenAddress = event.tokenMint || event.accounts?.[0];
         console.log('New token detected:', tokenAddress);
 
-        // Fetch token metadata (simplified, replace with Helius API if needed)
-        const tokenData = await fetchTokenData(tokenAddress);
-        lastTokenData = tokenData;
+        if (!tokenAddress) {
+          console.log('No token address found in event');
+          continue;
+        }
 
-        // Apply filters
-        if (checkToken(tokenData)) {
+        const tokenData = await fetchTokenData(tokenAddress);
+        if (!tokenData) {
+          console.log('Failed to fetch token data for:', tokenAddress);
+          continue;
+        }
+
+        lastTokenData = tokenData;
+        console.log('Token data:', tokenData);
+
+        // Bypass filters for testing
+        const bypassFilters = process.env.BYPASS_FILTERS === 'true';
+        if (bypassFilters || checkToken(tokenData)) {
+          console.log('Token passed filters, sending alert:', tokenData);
           sendTokenAlert(chatId, tokenData);
           if (process.env.AUTO_SNIPE === 'true') {
             await autoSnipeToken(tokenData.address);
@@ -77,15 +90,38 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Fetch token data (placeholder, replace with Helius API)
+// Test Webhook Endpoint (for manual testing)
+app.post('/test-webhook', async (req, res) => {
+  try {
+    const mockEvent = {
+      type: 'TOKEN_MINT',
+      tokenMint: 'TEST_TOKEN_ADDRESS',
+      programId: PUMP_FUN_PROGRAM.toString(),
+      accounts: ['TEST_TOKEN_ADDRESS']
+    };
+    console.log('Received test webhook:', mockEvent);
+
+    const tokenData = await fetchTokenData(mockEvent.tokenMint);
+    if (tokenData) {
+      sendTokenAlert(chatId, tokenData);
+      console.log('Test alert sent:', tokenData);
+    }
+
+    return res.status(200).send('Test webhook processed');
+  } catch (error) {
+    console.error('Test webhook error:', error);
+    return res.status(500).send('Test webhook failed');
+  }
+});
+
+// Fetch token data (placeholder, replace with Helius API if needed)
 async function fetchTokenData(tokenAddress) {
   try {
     const mint = await getMint(connection, new PublicKey(tokenAddress));
-    // Mock data (use Helius API for real metadata)
     return {
       name: `Token_${tokenAddress.slice(0, 8)}`,
       address: tokenAddress,
-      liquidity: Math.random() * 10000 + 1000, // Replace with real API data
+      liquidity: Math.random() * 10000 + 1000,
       marketCap: Math.random() * 100000 + 1000,
       devHolding: Math.random() * 50,
       poolSupply: Math.random() * 90 + 10,
@@ -105,7 +141,7 @@ app.post(`/bot${token}`, (req, res) => {
   res.sendStatus(200);
 });
 
-// Telegram Bot Logic
+// Telegram Bot Logic (unchanged)
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
   👋 Welcome to @moongraphi_bot
@@ -369,9 +405,8 @@ bot.on('message', (msg) => {
 async function autoSnipeToken(tokenAddress) {
   try {
     const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
-    const amountToBuy = 0.1; // SOL
+    const amountToBuy = 0.1;
 
-    // Placeholder: Use Raydium or Jupiter for proper token swap
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: wallet.publicKey,
@@ -442,5 +477,6 @@ app.get('/', (req, res) => res.send('Bot running!'));
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log('Webhook URL:', `${process.env.WEBHOOK_URL}/webhook`);
+  console.log('Helius Webhook URL:', `${webhookBaseUrl}/webhook`);
+  console.log('Starting Helius webhook monitoring...');
 });
