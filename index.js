@@ -2,38 +2,102 @@ require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
-const { getMint, TOKEN_PROGRAM_ID } = require('@solana/spl-token'); // For fetching token metadata
+const { getMint, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const chatId = process.env.TELEGRAM_CHAT_ID || '-1002511600127'; // Default chat ID
+const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, { commitment: 'confirmed' });
+
+if (!token || !process.env.WEBHOOK_URL || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
+  console.error('Missing environment variables. Required: TELEGRAM_BOT_TOKEN, WEBHOOK_URL, HELIUS_API_KEY, PRIVATE_KEY');
+  process.exit(1);
+}
+
 const bot = new TelegramBot(token, { polling: false });
-const connection = new Connection('https://mainnet.helius-rpc.com /?api-key=2922185-632-429b-b209-e98d75c3
-
-aaaa', { commitment: 'confirmed' });
-
-const bot new TelegramBot(token, { polling: false }); const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5 qL78xJ6nQozT');
+const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT');
 
 app.use(express.json());
 
-// Set webhook
+// Set Telegram webhook
+bot.setWebHook(`${process.env.WEBHOOK_URL}/bot${token}`);
 
-bot.setWebHook($ {process.env.WEBHOOK_URL}/bot${token}');
 // In-memory storage (Render free tier)
 let walletKey = null;
 let filters = {
-  liquidity: { min: 1000, max: 100000 }, // Relaxed range
-  marketCap: { min: 1000, max: 500000 }, // Relaxed range
-  devHolding: { min: 0, max: 50 }, // Relaxed range
-  poolSupply: { min: 10, max: 100 }, // Relaxed range
-  launchPrice: { min: 0.000000001, max: 0.01 }, // Relaxed range
-  mintAuthRevoked: false, // Allow both true and false
-  freezeAuthRevoked: false // Allow both true and false
+  liquidity: { min: 1000, max: 100000 },
+  marketCap: { min: 1000, max: 500000 },
+  devHolding: { min: 0, max: 50 },
+  poolSupply: { min: 10, max: 100 },
+  launchPrice: { min: 0.000000001, max: 0.01 },
+  mintAuthRevoked: false,
+  freezeAuthRevoked: false
 };
 let lastTokenData = null;
+let userStates = {};
 
-// State to track which filter the user is editing
-let userStates = {}; // { chatId: { editing: 'liquidity' } }
+// Helius Webhook Endpoint
+app.post('/webhook', async (req, res) => {
+  try {
+    const events = req.body;
+    console.log('Received Helius webhook:', events);
+
+    if (!events || !Array.isArray(events) || events.length === 0) {
+      console.log('No events in webhook');
+      return res.status(400).send('No events received');
+    }
+
+    for (const event of events) {
+      // Check if event is a token mint or Pump.fun related
+      if (event.type === 'TOKEN_MINT' || event.programId === PUMP_FUN_PROGRAM.toString()) {
+        const tokenAddress = event.tokenMint || event.accounts[0];
+        console.log('New token detected:', tokenAddress);
+
+        // Fetch token metadata (simplified, replace with Helius API if needed)
+        const tokenData = await fetchTokenData(tokenAddress);
+        lastTokenData = tokenData;
+
+        // Apply filters
+        if (checkToken(tokenData)) {
+          sendTokenAlert(chatId, tokenData);
+          if (process.env.AUTO_SNIPE === 'true') {
+            await autoSnipeToken(tokenData.address);
+          }
+        } else {
+          console.log('Token did not pass filters:', tokenData);
+        }
+      }
+    }
+
+    return res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return res.status(500).send('Internal Server Error');
+  }
+});
+
+// Fetch token data (placeholder, replace with Helius API)
+async function fetchTokenData(tokenAddress) {
+  try {
+    const mint = await getMint(connection, new PublicKey(tokenAddress));
+    // Mock data (use Helius API for real metadata)
+    return {
+      name: `Token_${tokenAddress.slice(0, 8)}`,
+      address: tokenAddress,
+      liquidity: Math.random() * 10000 + 1000, // Replace with real API data
+      marketCap: Math.random() * 100000 + 1000,
+      devHolding: Math.random() * 50,
+      poolSupply: Math.random() * 90 + 10,
+      launchPrice: Math.random() * 0.01 + 0.000000001,
+      mintAuthRevoked: Math.random() > 0.5,
+      freezeAuthRevoked: Math.random() > 0.5
+    };
+  } catch (error) {
+    console.error('Error fetching token data:', error);
+    return null;
+  }
+}
 
 // Telegram Bot Webhook Handler
 app.post(`/bot${token}`, (req, res) => {
@@ -59,7 +123,7 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// Handle Button Callbacks
+// Handle Button Callbacks (unchanged)
 bot.on('callback_query', (callbackQuery) => {
   const msg = callbackQuery.message;
   const data = callbackQuery.data;
@@ -223,7 +287,7 @@ bot.on('callback_query', (callbackQuery) => {
   }
 });
 
-// Handle user input for filter changes
+// Handle user input for filter changes (unchanged)
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -301,71 +365,17 @@ bot.on('message', (msg) => {
   }
 });
 
-// Monitor Pump.fun for New Tokens (Direct Solana Monitoring)
-async function monitorPumpFun() {
-  console.log('Starting Pump.fun monitoring...');
-  try {
-    connection.onLogs(
-      PUMP_FUN_PROGRAM,
-      async (logs) => {
-        console.log('Logs detected:', logs);
-        try {
-          const signature = logs.signature;
-          const transaction = await connection.getParsedTransaction(signature, { commitment: 'confirmed' });
-          if (!transaction) return;
-
-          // Check for token mint events
-          const tokenMint = transaction.transaction.message.instructions.find(
-            (instr) => instr.programId.toString() === TOKEN_PROGRAM_ID.toString() && instr.parsed?.type === 'mintTo'
-          );
-
-          if (tokenMint) {
-            const tokenAddress = tokenMint.parsed.info.mint;
-            console.log('New token mint detected:', tokenAddress);
-
-            // Basic token data (without Helius API calls)
-            const tokenData = {
-              name: `Token_${tokenAddress.slice(0, 8)}`,
-              address: tokenAddress,
-              liquidity: 8000, // Fallback value
-              marketCap: 20000, // Fallback value
-              devHolding: 5, // Fallback value
-              poolSupply: 50, // Fallback value
-              launchPrice: 0.000005, // Fallback value
-              mintAuthRevoked: true, // Fallback value
-              freezeAuthRevoked: false // Fallback value
-            };
-
-            console.log('New token detected:', tokenData);
-
-            lastTokenData = tokenData;
-
-            // Send alert directly (bypassing strict filters for now)
-            sendTokenAlert('-1002511600127', tokenData);
-            await autoSnipeToken(tokenData.address);
-          }
-        } catch (error) {
-          console.error('Error processing logs:', error);
-        }
-      },
-      'confirmed'
-    );
-  } catch (error) {
-    console.error('Error setting up logs listener:', error);
-  }
-}
-
-// Auto-Snipe Logic
+// Auto-Snipe Logic (Placeholder for Raydium/Jupiter)
 async function autoSnipeToken(tokenAddress) {
   try {
     const wallet = Keypair.fromSecretKey(Buffer.from(process.env.PRIVATE_KEY, 'base64'));
-    const tokenAccount = new PublicKey(tokenAddress);
-    const amountToBuy = 0.1;
+    const amountToBuy = 0.1; // SOL
 
+    // Placeholder: Use Raydium or Jupiter for proper token swap
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: wallet.publicKey,
-        toPubkey: tokenAccount,
+        toPubkey: new PublicKey(tokenAddress),
         lamports: amountToBuy * 1e9
       })
     );
@@ -373,25 +383,26 @@ async function autoSnipeToken(tokenAddress) {
     const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);
     console.log(`Bought token ${tokenAddress} with signature ${signature}`);
 
-    bot.sendMessage('-1002511600127', `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
+    bot.sendMessage(chatId, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
   } catch (error) {
     console.error('Error auto-sniping token:', error);
-    bot.sendMessage('-1002511600127', `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
+    bot.sendMessage(chatId, `❌ Failed to buy token ${tokenAddress}: ${error.message}`);
   }
 }
 
 // Send Token Alert
 function sendTokenAlert(chatId, tokenData) {
+  if (!tokenData) return;
   const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
   bot.sendMessage(chatId, `
 🚀 New Token Alert on Pump.fun! 🚀
 Name: ${tokenData.name}
 Contract: ${tokenData.address}
-Liquidity: $${tokenData.liquidity}
-Market Cap: $${tokenData.marketCap}
-Dev Holding: ${tokenData.devHolding}%
-Pool Supply: ${tokenData.poolSupply}%
-Launch Price: $${tokenData.launchPrice}
+Liquidity: $${tokenData.liquidity.toFixed(2)}
+Market Cap: $${tokenData.marketCap.toFixed(2)}
+Dev Holding: ${tokenData.devHolding.toFixed(2)}%
+Pool Supply: ${tokenData.poolSupply.toFixed(2)}%
+Launch Price: $${tokenData.launchPrice.toFixed(9)}
 Mint Revoked: ${tokenData.mintAuthRevoked}
 Freeze Revoked: ${tokenData.freezeAuthRevoked}
 📊 Chart: [View Chart](${chartLink})
@@ -406,8 +417,9 @@ Freeze Revoked: ${tokenData.freezeAuthRevoked}
   });
 }
 
-// Filter Logic (Not used for now since we're bypassing filters)
+// Filter Logic
 function checkToken(tokenData) {
+  if (!tokenData) return false;
   return (
     tokenData.liquidity >= filters.liquidity.min &&
     tokenData.liquidity <= filters.liquidity.max &&
@@ -427,8 +439,8 @@ function checkToken(tokenData) {
 // Health Check
 app.get('/', (req, res) => res.send('Bot running!'));
 
-// Start Server and Monitoring
+// Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  monitorPumpFun();
+  console.log('Webhook URL:', `${process.env.WEBHOOK_URL}/webhook`);
 });
