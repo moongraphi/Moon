@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID || '-1002511600127';
-const webhookBaseUrl = process.env.WEBHOOK_URL?.replace(/$/, '');
+const webhookBaseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, ''); // Remove trailing slash if any
 const connection = new Connection(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, { commitment: 'confirmed' });
 
 if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRIVATE_KEY) {
@@ -429,7 +429,7 @@ bot.on('callback_query', (callbackQuery) => {
       break;  
 
     default:  
-      bot.sendMessage(chatId, 'Unknown command. Please use the buttons.');
+      bot.sendMessage(chatId, 'Unknown command. Please use the buttons');
 
   }
 });
@@ -519,7 +519,9 @@ app.get('/', (req, res) => res.send('Bot running!'));
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log('Helius Webhook URL:', `${webhookBaseUrl}/webhook`);
+  // Fix: Only append /webhook if not already present
+  const heliusWebhookUrl = webhookBaseUrl.endsWith('/webhook') ? webhookBaseUrl : `${webhookBaseUrl}/webhook`;
+  console.log('Helius Webhook URL:', heliusWebhookUrl);
   console.log('Starting Helius webhook monitoring...');
   bot.sendMessage(chatId, '🚀 Bot started! Waiting for Pump.fun token alerts...');
 });
