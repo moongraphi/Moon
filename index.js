@@ -18,13 +18,15 @@ if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRI
   process.exit(1);
 }
 
-const bot = new TelegramBot(token, { polling: false });
-const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+// Configure Telegram Bot with retry mechanism
+const bot = new TelegramBot(token, { polling: false, request: { retryAfter: 21 } }); // Retry after 21 seconds on 429
 
 app.use(express.json());
 
 // Set Telegram webhook
-bot.setWebHook(`${webhookBaseUrl}/bot${token}`);
+bot.setWebHook(`${webhookBaseUrl}/bot${token}`).then(() => {
+  console.log('Webhook set:', bot.getWebHookInfo());
+});
 
 // In-memory storage
 let filters = {
@@ -43,11 +45,10 @@ app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
     console.log('Webhook received, type:', events.type, 'data:', JSON.stringify(events, null, 2));
-    bot.sendMessage(chatId, 'ℹ️ Received webhook from Helius');
+    // Removed bot.sendMessage for every webhook to avoid rate limit
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       console.log('No events in webhook');
-      bot.sendMessage(chatId, '⚠️ Received empty webhook from Helius');
       return res.status(400).send('No events received');
     }
 
@@ -61,7 +62,6 @@ app.post('/webhook', async (req, res) => {
 
         if (!tokenAddress) {
           console.log('No token address found in event, trying to extract:', JSON.stringify(event));
-          bot.sendMessage(chatId, `⚠️ No token address found in event: ${JSON.stringify(event)}`);
           continue;
         }
 
@@ -72,7 +72,6 @@ app.post('/webhook', async (req, res) => {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
-            bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
             continue;
           }
 
@@ -88,7 +87,6 @@ app.post('/webhook', async (req, res) => {
             }
           } else {
             console.log('Token did not pass filters:', tokenData);
-            bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);
           }
         } else {
           console.log('Event not from Pump.fun, ignored. Program ID check failed:', {
@@ -105,7 +103,6 @@ app.post('/webhook', async (req, res) => {
     return res.status(200).send('OK');
   } catch (error) {
     console.error('Webhook error:', error);
-    bot.sendMessage(chatId, `❌ Webhook error: ${error.message}`);
     return res.status(500).send('Internal Server Error');
   }
 });
