@@ -97,7 +97,6 @@ app.post('/webhook', async (req, res) => {
           if (bypassFilters || checkAgainstFilters(tokenData, filters)) {
             console.log('Token passed filters, sending alert:', tokenData);
             sendTokenAlert(chatId, tokenData);
-            // Add delay to respect Telegram rate limit
             await delay(1000); // 1 second delay between messages
             if (process.env.AUTO_SNIPE === 'true') {
               await autoSnipeToken(tokenData.address);
@@ -155,8 +154,8 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Updated sendTokenAlert with plain text and proper link
-function sendTokenAlert(chatId, tokenData) {
+// Updated sendTokenAlert with error handling
+async function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
   const message = `New Token Alert!\n` +
                   `Token Name: ${tokenData.name || 'N/A'}\n` +
@@ -170,7 +169,12 @@ function sendTokenAlert(chatId, tokenData) {
                   `Freeze Auth Revoked: ${tokenData.freezeAuthRevoked ? 'Yes' : 'No'}\n` +
                   `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
   console.log('Sending message:', message); // Debug the exact message
-  bot.sendMessage(chatId, message); // Plain text
+  try {
+    await bot.sendMessage(chatId, message); // Plain text
+    console.log('Message sent successfully');
+  } catch (error) {
+    console.error('Failed to send message to Telegram:', error.message);
+  }
 }
 
 // Auto-Snipe Logic (Placeholder)
