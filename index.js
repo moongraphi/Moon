@@ -89,12 +89,12 @@ app.post('/webhook', async (req, res) => {
             console.log('No valid token data for:', tokenAddress);
             if (!lastFailedToken || lastFailedToken !== tokenAddress) {
               bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
-              lastFailedToken = tokenAddress; // Track last failed token to avoid spam
+              lastFailedToken = tokenAddress;
+              await delay(2000); // 2-second delay to respect rate limit
             }
             continue;
           }
 
-          // Validate token data to avoid dummy alerts (already handled in extractTokenInfo)
           lastTokenData = tokenData;
           console.log('Token data:', tokenData);
 
@@ -102,14 +102,14 @@ app.post('/webhook', async (req, res) => {
           if (bypassFilters || checkAgainstFilters(tokenData, filters)) {
             console.log('Token passed filters, sending alert:', tokenData);
             sendTokenAlert(chatId, tokenData);
-            await delay(1000); // 1 second delay between messages
+            await delay(2000); // Increased delay to 2 seconds
             if (process.env.AUTO_SNIPE === 'true') {
               await autoSnipeToken(tokenData.address);
             }
           } else {
-            console.log('Token did not pass filters:', tokenData);
+            console.log('Token did not pass filters:', tokenAddress);
             bot.sendMessage(chatId, `ℹ️ Token ${tokenAddress} did not pass filters`);
-            await delay(1000); // Delay for non-alert messages too
+            await delay(2000); // Increased delay
           }
         } else {
           console.log('Event not from Pump.fun, ignored. Program ID check failed:', {
@@ -165,17 +165,17 @@ async function sendTokenAlert(chatId, tokenData) {
   const message = `New Token Alert!\n` +
                   `Token Name: ${tokenData.name || 'N/A'}\n` +
                   `Token Address: ${tokenData.address || 'N/A'}\n` +
-                  `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
-                  `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
-                  `Dev Holding: ${tokenData.devHolding || 'N/A'}%\n` +
-                  `Pool Supply: ${tokenData.poolSupply || 'N/A'}%\n` +
-                  `Launch Price: ${tokenData.launchPrice || 'N/A'} SOL\n` +
-                  `Mint Auth Revoked: ${tokenData.mintAuthRevoked ? 'Yes' : 'No'}\n` +
-                  `Freeze Auth Revoked: ${tokenData.freezeAuthRevoked ? 'Yes' : 'No'}\n` +
-                  `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
-  console.log('Sending message:', message); // Debug the exact message
+                  `Liquidity: ${token.liquidity || 'N/A'}\n` +
+                  `Market Cap: ${token.marketCap || 'N/A'}\n` +
+                  `Dev Holding: ${token.devHolding || 'N/A'}%\n` +
+                  `Pool Supply: ${token.poolSupply || 'N/A'}%\n` +
+                  `Launch Price: ${token.launchPrice || 'N/A'} SOL\n` +
+                  `Mint Auth Revoked: ${token.mintAuthRevoked ? 'Yes' : 'No'}\n` +
+                  `Freeze Auth Revoked: ${token.freezeAuthRevoked ? 'Yes' : 'No'}\n` +
+                  `Chart: https://dexscreener.com/solana/${token.address || ''}`;
+  console.log('Sending message:', message);
   try {
-    await bot.sendMessage(chatId, message); // Plain text
+    await bot.sendMessage(chatId, message);
     console.log('Message sent successfully');
   } catch (error) {
     console.error('Failed to send message to Telegram:', error.message);
