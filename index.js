@@ -73,10 +73,11 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        const isPumpFunEvent = event.programId === PUMP_FUN_PROGRAM.toString() || 
-                             (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString() || 
+        // Robust Pump.fun event check
+        const isPumpFunEvent = event.programId ? (event.programId === PUMP_FUN_PROGRAM.toString() || 
+                             event.accounts?.some(acc => acc === PUMP_FUN_PROGRAM.toString() || 
                              acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)) || 
-                             event.programId?.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8))));
+                             event.programId?.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)))) : false;
         console.log('Is Pump.fun event:', isPumpFunEvent);
         if (isPumpFunEvent || !event.programId) {
           const tokenData = await extractTokenInfo(event);
@@ -148,18 +149,22 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Updated sendTokenAlert with plain text
+// Updated sendTokenAlert with plain text and proper link
 function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
-  const message = formatTokenMessage(tokenData) || 
-                  `New Token Alert!\n` +
+  const message = `New Token Alert!\n` +
                   `Token Name: ${tokenData.name || 'N/A'}\n` +
                   `Token Address: ${tokenData.address || 'N/A'}\n` +
                   `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
                   `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
+                  `Dev Holding: ${tokenData.devHolding || 'N/A'}%\n` +
+                  `Pool Supply: ${tokenData.poolSupply || 'N/A'}%\n` +
+                  `Launch Price: ${tokenData.launchPrice || 'N/A'} SOL\n` +
+                  `Mint Auth Revoked: ${tokenData.mintAuthRevoked ? 'Yes' : 'No'}\n` +
+                  `Freeze Auth Revoked: ${tokenData.freezeAuthRevoked ? 'Yes' : 'No'}\n` +
                   `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
   console.log('Sending message:', message); // Debug the exact message
-  bot.sendMessage(chatId, message); // Removed parse_mode: 'Markdown'
+  bot.sendMessage(chatId, message); // Plain text
 }
 
 // Auto-Snipe Logic (Placeholder)
