@@ -18,8 +18,12 @@ if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRI
   process.exit(1);
 }
 
+// Ensure PUMP_FUN_PROGRAM is globally defined
+const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+console.log('PUMP_FUN_PROGRAM defined:', PUMP_FUN_PROGRAM.toString());
+
 // Configure Telegram Bot with retry mechanism
-const bot = new TelegramBot(token, { polling: false, request: { retryAfter: 21 } }); // Retry after 21 seconds on 429
+const bot = new TelegramBot(token, { polling: false, request: { retryAfter: 21 } });
 
 app.use(express.json());
 
@@ -45,7 +49,6 @@ app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
     console.log('Webhook received, type:', events.type, 'data:', JSON.stringify(events, null, 2));
-    // Removed bot.sendMessage for every webhook to avoid rate limit
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       console.log('No events in webhook');
@@ -65,13 +68,23 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
+        // Check if PUMP_FUN_PROGRAM is defined
+        if (!PUMP_FUN_PROGRAM) {
+          console.warn('PUMP_FUN_PROGRAM is not defined, skipping Pump.fun check');
+          continue;
+        }
+
+        // Relaxed Pump.fun program ID check
         const isPumpFunEvent = event.programId === PUMP_FUN_PROGRAM.toString() || 
-                             (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString() || acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 10))));
+                             (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString() || 
+                             acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)) || 
+                             event.programId?.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8))));
         console.log('Is Pump.fun event:', isPumpFunEvent);
         if (isPumpFunEvent) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
+            bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
             continue;
           }
 
@@ -87,6 +100,7 @@ app.post('/webhook', async (req, res) => {
             }
           } else {
             console.log('Token did not pass filters:', tokenData);
+            bot.sendMessage(chatId, `ℹ️ Token ${tokenAddress} did not pass filters`);
           }
         } else {
           console.log('Event not from Pump.fun, ignored. Program ID check failed:', {
