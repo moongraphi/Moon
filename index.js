@@ -90,6 +90,12 @@ app.post('/webhook', async (req, res) => {
             continue;
           }
 
+          // Validate token data to avoid dummy alerts
+          if (tokenData.liquidity === 1000 && tokenData.marketCap === 1000 && tokenData.devHolding === 5 && tokenData.poolSupply === 50 && tokenData.launchPrice === 0.000005) {
+            console.log('Skipping alert: Detected dummy token data');
+            continue;
+          }
+
           lastTokenData = tokenData;
           console.log('Token data:', tokenData);
 
