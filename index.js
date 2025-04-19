@@ -53,8 +53,8 @@ app.post('/webhook', async (req, res) => {
 
     for (const event of events) {
       console.log('Processing event (detailed):', JSON.stringify(event, null, 2));
-      console.log('Program ID from event:', event.programId); // Debug log
-      console.log('Accounts from event:', event.accounts); // Debug log
+      console.log('Program ID from event:', event.programId);
+      console.log('Accounts from event:', event.accounts);
       if (event.type === 'CREATE') {
         let tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature;
         console.log('Extracted token address:', tokenAddress);
@@ -65,11 +65,13 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        // Improved check for Pump.fun program ID
-        if (event.programId === PUMP_FUN_PROGRAM.toString() || (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString()))) {
+        const isPumpFunEvent = event.programId === PUMP_FUN_PROGRAM.toString() || 
+                             (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString() || acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 10))));
+        console.log('Is Pump.fun event:', isPumpFunEvent);
+        if (isPumpFunEvent) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
-            console.log('Failed to fetch token data for:', tokenAddress);
+            console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
             bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
             continue;
           }
@@ -115,7 +117,7 @@ app.post('/test-webhook', async (req, res) => {
       type: 'CREATE',
       tokenMint: 'TEST_TOKEN_ADDRESS',
       programId: PUMP_FUN_PROGRAM.toString(),
-      accounts: ['TEST_TOKEN_ADDRESS']
+      accounts: ['TEST_TOKEN_ADDRESS', PUMP_FUN_PROGRAM.toString()]
     };
     console.log('Received test webhook:', JSON.stringify(mockEvent, null, 2));
     bot.sendMessage(chatId, 'ℹ️ Received test webhook');
@@ -137,11 +139,17 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Fetch token data (Real Helius API with fallback) - Moved to Helper.function
+// Updated sendTokenAlert with default format
 function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
-  const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
-  bot.sendMessage(chatId, formatTokenMessage(tokenData), { parse_mode: 'Markdown' });
+  let message = formatTokenMessage(tokenData) || 
+                `📌 New Token Alert!\n` +
+                `Token Name: ${tokenData.name || 'N/A'}\n` +
+                `Token Address: ${tokenData.address || 'N/A'}\n` +
+                `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
+                `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
+                `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
+  bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 }
 
 // Auto-Snipe Logic (Placeholder)
@@ -179,12 +187,12 @@ bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `👋 Welcome to @moongraphi_bot
 💰 Trade  |  🔐 Wallet
 ⚙️ Filters  |  📊 Portfolio
-❓ Help`, {
+❓ Help  |  🔄 Refresh`, {
     reply_markup: {
       inline_keyboard: [
         [{ text: '💰 Trade', callback_data: 'trade' }, { text: '🔐 Wallet', callback_data: 'wallet' }],
         [{ text: '⚙️ Filters', callback_data: 'filters' }, { text: '📊 Portfolio', callback_data: 'portfolio' }],
-        [{ text: '❓ Help', callback_data: 'help' }]
+        [{ text: '❓ Help', callback_data: 'help' }, { text: '🔄 Refresh', callback_data: 'refresh' }]
       ]
     }
   });
@@ -257,15 +265,19 @@ bot.on('callback_query', (callbackQuery) => {
       });
       break;
 
+    case 'refresh':
+      bot.sendMessage(chatId, `🔄 Refreshing latest token data...\nLast Token: ${lastTokenData?.address || 'N/A'}`);
+      break;
+
     case 'back':
-      bot.editMessageText(`👋 Welcome to @moongraphi_bot\n💰 Trade  |  🔐 Wallet\n⚙️ Filters  |  📊 Portfolio\n❓ Help`, {
+      bot.editMessageText(`👋 Welcome to @moongraphi_bot\n💰 Trade  |  🔐 Wallet\n⚙️ Filters  |  📊 Portfolio\n❓ Help  |  🔄 Refresh`, {
         chat_id: chatId,
         message_id: msg.message_id,
         reply_markup: {
           inline_keyboard: [
             [{ text: '💰 Trade', callback_data: 'trade' }, { text: '🔐 Wallet', callback_data: 'wallet' }],
             [{ text: '⚙️ Filters', callback_data: 'filters' }, { text: '📊 Portfolio', callback_data: 'portfolio' }],
-            [{ text: '❓ Help', callback_data: 'help' }]
+            [{ text: '❓ Help', callback_data: 'help' }, { text: '🔄 Refresh', callback_data: 'refresh' }]
           ]
         }
       });
