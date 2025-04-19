@@ -43,6 +43,7 @@ let filters = {
 };
 let lastTokenData = null;
 let userStates = {};
+let lastFailedToken = null; // Track last failed token to avoid spam
 
 // Function to delay execution
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -85,17 +86,15 @@ app.post('/webhook', async (req, res) => {
         if (isPumpFunEvent || !event.programId) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
-            console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
-            bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
+            console.log('No valid token data for:', tokenAddress);
+            if (!lastFailedToken || lastFailedToken !== tokenAddress) {
+              bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);
+              lastFailedToken = tokenAddress; // Track last failed token to avoid spam
+            }
             continue;
           }
 
-          // Validate token data to avoid dummy alerts
-          if (tokenData.liquidity === 1000 && tokenData.marketCap === 1000 && tokenData.devHolding === 5 && tokenData.poolSupply === 50 && tokenData.launchPrice === 0.000005) {
-            console.log('Skipping alert: Detected dummy token data');
-            continue;
-          }
-
+          // Validate token data to avoid dummy alerts (already handled in extractTokenInfo)
           lastTokenData = tokenData;
           console.log('Token data:', tokenData);
 
