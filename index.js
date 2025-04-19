@@ -19,7 +19,7 @@ if (!token || !webhookBaseUrl || !process.env.HELIUS_API_KEY || !process.env.PRI
 }
 
 const bot = new TelegramBot(token, { polling: false });
-const PUMP_FUN_PROGRAM = new PublicKey('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT');
+const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
 app.use(express.json());
 
@@ -63,7 +63,7 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        if (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT')) {
+        if (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes(PUMP_FUN_PROGRAM.toString())) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress);
