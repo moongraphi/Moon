@@ -59,8 +59,9 @@ app.post('/webhook', async (req, res) => {
       console.log('Processing event (detailed):', JSON.stringify(event, null, 2));
       console.log('Program ID from event:', event.programId);
       console.log('Accounts from event:', event.accounts);
-      if (event.type === 'CREATE') {
-        let tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature;
+      // Handle undefined type by checking tokenBalanceChanges
+      if (event.type === 'CREATE' || (event.accountData && event.accountData.some(acc => acc.tokenBalanceChanges && acc.tokenBalanceChanges.length > 0))) {
+        let tokenAddress = event.tokenMint || event.accounts?.[0] || event.accountData?.[0]?.tokenBalanceChanges?.[0]?.mint || event.signature;
         console.log('Extracted token address:', tokenAddress);
 
         if (!tokenAddress) {
@@ -80,7 +81,7 @@ app.post('/webhook', async (req, res) => {
                              acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)) || 
                              event.programId?.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8))));
         console.log('Is Pump.fun event:', isPumpFunEvent);
-        if (isPumpFunEvent) {
+        if (isPumpFunEvent || !event.programId) { // Allow processing if programId is missing
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
@@ -110,7 +111,7 @@ app.post('/webhook', async (req, res) => {
           });
         }
       } else {
-        console.log('Event type ignored (not CREATE):', JSON.stringify(event));
+        console.log('Event type ignored (not CREATE or no token balance changes):', JSON.stringify(event));
       }
     }
 
