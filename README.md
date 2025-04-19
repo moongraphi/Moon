@@ -1,4 +1,4 @@
-# Moon
+# sun
 Pro sniping bot for pump.fun 
 # Meme Sniper Bot
 
