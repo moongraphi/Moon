@@ -54,8 +54,8 @@ app.post('/webhook', async (req, res) => {
 
     for (const event of events) {  
       console.log('Processing event:', JSON.stringify(event, null, 2));  
-      if (event.type === 'TOKEN_MINT' || event.programId === PUMP_FUN_PROGRAM.toString()) {  
-        const tokenAddress = event.tokenMint || event.accounts?.[0];  
+      if (event.type === 'CREATE' && (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT'))) {  
+        const tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature; // Fallback to signature if tokenMint missing
         console.log('New token detected:', tokenAddress);  
 
         if (!tokenAddress) {  
@@ -85,6 +85,8 @@ app.post('/webhook', async (req, res) => {
           console.log('Token did not pass filters:', tokenData);  
           bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);  
         }  
+      } else {  
+        console.log('Event ignored:', JSON.stringify(event, null, 2));  
       }  
     }  
 
@@ -101,7 +103,7 @@ app.post('/webhook', async (req, res) => {
 app.post('/test-webhook', async (req, res) => {
   try {
     const mockEvent = {
-      type: 'TOKEN_MINT',
+      type: 'CREATE', // Changed from TOKEN_MINT to CREATE
       tokenMint: 'TEST_TOKEN_ADDRESS',
       programId: PUMP_FUN_PROGRAM.toString(),
       accounts: ['TEST_TOKEN_ADDRESS']
@@ -201,7 +203,7 @@ function checkToken(tokenData) {
 function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
   const chartLink = `https://dexscreener.com/solana/${tokenData.address}`;
-  bot.sendMessage(chatId, `🚀 New Token Alert on Pump.fun! 🚀
+  bot.sendMessage(chatId, `🚀 New Token Created on Pump.fun! 🚀
 Name: ${tokenData.name}
 Contract: ${tokenData.address}
 Liquidity: $${tokenData.liquidity.toFixed(2)}
@@ -239,7 +241,7 @@ async function autoSnipeToken(tokenAddress) {
     const signature = await sendAndConfirmTransaction(connection, transaction, [wallet]);  
     console.log(`Bought token ${tokenAddress} with signature ${signature}`);  
 
-    bot.sendMessage(chatId, `✅ Bought token ${tokenAddress} for ${amountToBuy} SOL! Signature: ${signature}`);
+    bot.sendMessage(chatId, `✅ Bought token ${tokenData.address} for ${amountToBuy} SOL! Signature: ${signature}`);
 
   } catch (error) {
     console.error('Error auto-sniping token:', error);
