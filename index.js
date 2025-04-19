@@ -148,20 +148,18 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Updated sendTokenAlert with escaped formatting
+// Updated sendTokenAlert with plain text
 function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
-  // Escape special characters in name and address to avoid Markdown parsing issues
-  const escapedName = tokenData.name.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
-  const escapedAddress = tokenData.address.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
-  let message = formatTokenMessage(tokenData) || 
-                `📌 New Token Alert!\n` +
-                `Token Name: ${escapedName}\n` +
-                `Token Address: ${escapedAddress}\n` +
-                `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
-                `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
-                `Chart: https://dexscreener.com/solana/${escapedAddress}`;
-  bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+  const message = formatTokenMessage(tokenData) || 
+                  `New Token Alert!\n` +
+                  `Token Name: ${tokenData.name || 'N/A'}\n` +
+                  `Token Address: ${tokenData.address || 'N/A'}\n` +
+                  `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
+                  `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
+                  `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
+  console.log('Sending message:', message); // Debug the exact message
+  bot.sendMessage(chatId, message); // Removed parse_mode: 'Markdown'
 }
 
 // Auto-Snipe Logic (Placeholder)
