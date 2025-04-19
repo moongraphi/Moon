@@ -28,11 +28,10 @@ bot.setWebHook(`${webhookBaseUrl}/bot${token}`);
 
 // In-memory storage
 let filters = {
-  liquidity: { min: 1000, max: 100000 },
-  marketCap: { min: 1000, max: 500000 },
-  devHolding: { min: 0, max: 50 },
-  poolSupply: { min: 10, max: 100 },
-  launchPrice: { min: 0.000000001, max: 0.01 },
+  liquidity: { min: 4000, max: 25000 },
+  poolSupply: { min: 60, max: 95 },
+  devHolding: { min: 2, max: 10 },
+  launchPrice: { min: 0.0000000022, max: 0.0000000058 },
   mintAuthRevoked: false,
   freezeAuthRevoked: false
 };
@@ -216,13 +215,12 @@ bot.on('callback_query', (callbackQuery) => {
       break;
 
     case 'filters':
-      bot.sendMessage(chatId, `⚙️ Filters Menu\nCurrent Filters:\nLiquidity: ${filters.liquidity.min}-${filters.liquidity.max}\nMarket Cap: ${filters.marketCap.min}-${filters.marketCap.max}\nDev Holding: ${filters.devHolding.min}-${filters.devHolding.max}%\nPool Supply: ${filters.poolSupply.min}-${filters.poolSupply.max}%\nLaunch Price: ${filters.launchPrice.min}-${filters.launchPrice.max} SOL\nMint Auth Revoked: ${filters.mintAuthRevoked ? 'Yes' : 'No'}\nFreeze Auth Revoked: ${filters.freezeAuthRevoked ? 'Yes' : 'No'}`, {
+      bot.sendMessage(chatId, `⚙️ Filters Menu\nCurrent Filters:\nLiquidity: ${filters.liquidity.min}-${filters.liquidity.max}\nPool Supply: ${filters.poolSupply.min}-${filters.poolSupply.max}%\nDev Holding: ${filters.devHolding.min}-${filters.devHolding.max}%\nLaunch Price: ${filters.launchPrice.min}-${filters.launchPrice.max} SOL\nMint Auth Revoked: ${filters.mintAuthRevoked ? 'Yes' : 'No'}\nFreeze Auth Revoked: ${filters.freezeAuthRevoked ? 'Yes' : 'No'}`, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '✏️ Edit Liquidity', callback_data: 'edit_liquidity' }],
-            [{ text: '✏️ Edit Market Cap', callback_data: 'edit_marketcap' }],
-            [{ text: '✏️ Edit Dev Holding', callback_data: 'edit_devholding' }],
             [{ text: '✏️ Edit Pool Supply', callback_data: 'edit_poolsupply' }],
+            [{ text: '✏️ Edit Dev Holding', callback_data: 'edit_devholding' }],
             [{ text: '✏️ Edit Launch Price', callback_data: 'edit_launchprice' }],
             [{ text: '✏️ Edit Mint Auth', callback_data: 'edit_mintauth' }],
             [{ text: '✏️ Edit Freeze Auth', callback_data: 'edit_freezeauth' }],
@@ -268,29 +266,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_liquidity':
       userStates[chatId] = { editing: 'liquidity' };
-      bot.sendMessage(chatId, '✏️ Edit Liquidity\nPlease send the new range (e.g., "5000-15000" or "5000 15000")', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '⬅️ Back', callback_data: 'filters' }]
-          ]
-        }
-      });
-      break;
-
-    case 'edit_marketcap':
-      userStates[chatId] = { editing: 'marketcap' };
-      bot.sendMessage(chatId, '✏️ Edit Market Cap\nPlease send the new range (e.g., "2000-80000" or "2000 80000")', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '⬅️ Back', callback_data: 'filters' }]
-          ]
-        }
-      });
-      break;
-
-    case 'edit_devholding':
-      userStates[chatId] = { editing: 'devholding' };
-      bot.sendMessage(chatId, '✏️ Edit Dev Holding\nPlease send the new range (e.g., "2-8" or "2 8")', {
+      bot.sendMessage(chatId, '✏️ Edit Liquidity\nPlease send the new range (e.g., "4000-25000" or "4000 25000")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -301,7 +277,18 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_poolsupply':
       userStates[chatId] = { editing: 'poolsupply' };
-      bot.sendMessage(chatId, '✏️ Edit Pool Supply\nPlease send the new range (e.g., "30-90" or "30 90")', {
+      bot.sendMessage(chatId, '✏️ Edit Pool Supply\nPlease send the new range (e.g., "60-95" or "60 95")', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⬅️ Back', callback_data: 'filters' }]
+          ]
+        }
+      });
+      break;
+
+    case 'edit_devholding':
+      userStates[chatId] = { editing: 'devholding' };
+      bot.sendMessage(chatId, '✏️ Edit Dev Holding\nPlease send the new range (e.g., "2-10" or "2 10")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -312,7 +299,7 @@ bot.on('callback_query', (callbackQuery) => {
 
     case 'edit_launchprice':
       userStates[chatId] = { editing: 'launchprice' };
-      bot.sendMessage(chatId, '✏️ Edit Launch Price\nPlease send the new range (e.g., "0.000000002-0.002" or "0.000000002 0.002")', {
+      bot.sendMessage(chatId, '✏️ Edit Launch Price\nPlease send the new range (e.g., "0.0000000022-0.0000000058" or "0.0000000022 0.0000000058")', {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⬅️ Back', callback_data: 'filters' }]
@@ -360,7 +347,7 @@ bot.on('message', (msg) => {
   const editingField = userStates[chatId].editing;
 
   try {
-    if (editingField === 'liquidity' || editingField === 'marketcap' || editingField === 'devholding' || editingField === 'poolsupply' || editingField === 'launchprice') {
+    if (editingField === 'liquidity' || editingField === 'poolsupply' || editingField === 'devholding' || editingField === 'launchprice') {
       let [min, max] = [];
       if (text.includes('-')) {
         [min, max] = text.split('-').map(val => parseFloat(val.trim()));
@@ -369,22 +356,19 @@ bot.on('message', (msg) => {
       }
 
       if (isNaN(min) || isNaN(max) || min > max) {
-        bot.sendMessage(chatId, 'Invalid range. Please send a valid range (e.g., "5000-15000" or "5000 15000").');
+        bot.sendMessage(chatId, 'Invalid range. Please send a valid range (e.g., "4000-25000" or "4000 25000").');
         return;
       }
 
       if (editingField === 'liquidity') {
         filters.liquidity.min = min;
         filters.liquidity.max = max;
-      } else if (editingField === 'marketcap') {
-        filters.marketCap.min = min;
-        filters.marketCap.max = max;
-      } else if (editingField === 'devholding') {
-        filters.devHolding.min = min;
-        filters.devHolding.max = max;
       } else if (editingField === 'poolsupply') {
         filters.poolSupply.min = min;
         filters.poolSupply.max = max;
+      } else if (editingField === 'devholding') {
+        filters.devHolding.min = min;
+        filters.devHolding.max = max;
       } else if (editingField === 'launchprice') {
         filters.launchPrice.min = min;
         filters.launchPrice.max = max;
