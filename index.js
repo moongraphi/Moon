@@ -59,7 +59,6 @@ app.post('/webhook', async (req, res) => {
       console.log('Processing event (detailed):', JSON.stringify(event, null, 2));
       console.log('Program ID from event:', event.programId);
       console.log('Accounts from event:', event.accounts);
-      // Handle undefined type by checking tokenBalanceChanges
       if (event.type === 'CREATE' || (event.accountData && event.accountData.some(acc => acc.tokenBalanceChanges && acc.tokenBalanceChanges.length > 0))) {
         let tokenAddress = event.tokenMint || event.accounts?.[0] || event.accountData?.[0]?.tokenBalanceChanges?.[0]?.mint || event.signature;
         console.log('Extracted token address:', tokenAddress);
@@ -69,19 +68,17 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        // Check if PUMP_FUN_PROGRAM is defined
         if (!PUMP_FUN_PROGRAM) {
           console.warn('PUMP_FUN_PROGRAM is not defined, skipping Pump.fun check');
           continue;
         }
 
-        // Relaxed Pump.fun program ID check
         const isPumpFunEvent = event.programId === PUMP_FUN_PROGRAM.toString() || 
                              (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString() || 
                              acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)) || 
                              event.programId?.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8))));
         console.log('Is Pump.fun event:', isPumpFunEvent);
-        if (isPumpFunEvent || !event.programId) { // Allow processing if programId is missing
+        if (isPumpFunEvent || !event.programId) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress, 'Error details:', new Error().stack);
@@ -151,16 +148,19 @@ app.post('/test-webhook', async (req, res) => {
   }
 });
 
-// Updated sendTokenAlert with default format
+// Updated sendTokenAlert with escaped formatting
 function sendTokenAlert(chatId, tokenData) {
   if (!tokenData) return;
+  // Escape special characters in name and address to avoid Markdown parsing issues
+  const escapedName = tokenData.name.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+  const escapedAddress = tokenData.address.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
   let message = formatTokenMessage(tokenData) || 
                 `📌 New Token Alert!\n` +
-                `Token Name: ${tokenData.name || 'N/A'}\n` +
-                `Token Address: ${tokenData.address || 'N/A'}\n` +
+                `Token Name: ${escapedName}\n` +
+                `Token Address: ${escapedAddress}\n` +
                 `Liquidity: ${tokenData.liquidity || 'N/A'}\n` +
                 `Market Cap: ${tokenData.marketCap || 'N/A'}\n` +
-                `Chart: https://dexscreener.com/solana/${tokenData.address || ''}`;
+                `Chart: https://dexscreener.com/solana/${escapedAddress}`;
   bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 }
 
