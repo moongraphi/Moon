@@ -44,11 +44,15 @@ let filters = {
 let lastTokenData = null;
 let userStates = {};
 
+// Function to delay execution
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Helius Webhook Endpoint
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
     console.log('Webhook received, type:', events.type, 'data:', JSON.stringify(events, null, 2));
+    console.log('Number of events:', events.length);
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       console.log('No events in webhook');
@@ -73,7 +77,6 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        // Robust Pump.fun event check
         const isPumpFunEvent = event.programId ? (event.programId === PUMP_FUN_PROGRAM.toString() || 
                              event.accounts?.some(acc => acc === PUMP_FUN_PROGRAM.toString() || 
                              acc.includes(PUMP_FUN_PROGRAM.toString().slice(0, 8)) || 
@@ -94,12 +97,15 @@ app.post('/webhook', async (req, res) => {
           if (bypassFilters || checkAgainstFilters(tokenData, filters)) {
             console.log('Token passed filters, sending alert:', tokenData);
             sendTokenAlert(chatId, tokenData);
+            // Add delay to respect Telegram rate limit
+            await delay(1000); // 1 second delay between messages
             if (process.env.AUTO_SNIPE === 'true') {
               await autoSnipeToken(tokenData.address);
             }
           } else {
             console.log('Token did not pass filters:', tokenData);
             bot.sendMessage(chatId, `ℹ️ Token ${tokenAddress} did not pass filters`);
+            await delay(1000); // Delay for non-alert messages too
           }
         } else {
           console.log('Event not from Pump.fun, ignored. Program ID check failed:', {
