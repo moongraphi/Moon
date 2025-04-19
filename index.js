@@ -43,7 +43,7 @@ let userStates = {};
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
-    console.log('Received Helius webhook:', JSON.stringify(events, null, 2));
+    console.log('Received Helius webhook (raw):', JSON.stringify(events, null, 2));
     bot.sendMessage(chatId, 'ℹ️ Received webhook from Helius');
 
     if (!events || !Array.isArray(events) || events.length === 0) {  
@@ -53,40 +53,43 @@ app.post('/webhook', async (req, res) => {
     }  
 
     for (const event of events) {  
-      console.log('Processing event:', JSON.stringify(event, null, 2));  
-      if (event.type === 'CREATE' && (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT'))) {  
-        const tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature; // Fallback to signature if tokenMint missing
-        console.log('New token detected:', tokenAddress);  
-
+      console.log('Processing event (detailed):', JSON.stringify(event, null, 2));  
+      if (event.type === 'CREATE') {  
+        let tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature;  
         if (!tokenAddress) {  
-          console.log('No token address found in event');  
-          bot.sendMessage(chatId, '⚠️ No token address in Helius event');  
+          console.log('No token address found in event, trying to extract:', JSON.stringify(event));  
+          bot.sendMessage(chatId, `⚠️ No token address found in event: ${JSON.stringify(event)}`);  
           continue;  
         }  
+        console.log('Extracted token address:', tokenAddress);  
 
-        const tokenData = await fetchTokenData(tokenAddress);  
-        if (!tokenData) {  
-          console.log('Failed to fetch token data for:', tokenAddress);  
-          bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);  
-          continue;  
-        }  
+        if (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT')) {  
+          const tokenData = await fetchTokenData(tokenAddress);  
+          if (!tokenData) {  
+            console.log('Failed to fetch token data for:', tokenAddress);  
+            bot.sendMessage(chatId, `⚠️ Failed to fetch data for token: ${tokenAddress}`);  
+            continue;  
+          }  
 
-        lastTokenData = tokenData;  
-        console.log('Token data:', tokenData);  
+          lastTokenData = tokenData;  
+          console.log('Token data:', tokenData);  
 
-        const bypassFilters = process.env.BYPASS_FILTERS === 'true';  
-        if (bypassFilters || checkToken(tokenData)) {  
-          console.log('Token passed filters, sending alert:', tokenData);  
-          sendTokenAlert(chatId, tokenData);  
-          if (process.env.AUTO_SNIPE === 'true') {  
-            await autoSnipeToken(tokenData.address);  
+          const bypassFilters = process.env.BYPASS_FILTERS === 'true';  
+          if (bypassFilters || checkToken(tokenData)) {  
+            console.log('Token passed filters, sending alert:', tokenData);  
+            sendTokenAlert(chatId, tokenData);  
+            if (process.env.AUTO_SNIPE === 'true') {  
+              await autoSnipeToken(tokenData.address);  
+            }  
+          } else {  
+            console.log('Token did not pass filters:', tokenData);  
+            bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);  
           }  
         } else {  
-          console.log('Token did not pass filters:', tokenData);  
-          bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);  
+          console.log('Event not from Pump.fun, ignored:', JSON.stringify(event));  
         }  
       } else {  
-        console.log('Event ignored:', JSON.stringify(event, null, 2));  
+        console.log('Event type ignored (not CREATE):', JSON.stringify(event));  
       }  
     }  
 
@@ -103,7 +106,7 @@ app.post('/webhook', async (req, res) => {
 app.post('/test-webhook', async (req, res) => {
   try {
     const mockEvent = {
-      type: 'CREATE', // Changed from TOKEN_MINT to CREATE
+      type: 'CREATE',
       tokenMint: 'TEST_TOKEN_ADDRESS',
       programId: PUMP_FUN_PROGRAM.toString(),
       accounts: ['TEST_TOKEN_ADDRESS']
@@ -132,10 +135,8 @@ app.post('/test-webhook', async (req, res) => {
 // Fetch token data (Real Helius API with fallback)
 async function fetchTokenData(tokenAddress) {
   try {
-    // Fetch mint info
     const mint = await getMint(connection, new PublicKey(tokenAddress));
 
-    // Fetch metadata from Helius API  
     const response = await fetch(`https://api.helius.xyz/v0/tokens/metadata?api-key=${process.env.HELIUS_API_KEY}`, {  
       method: 'POST',  
       headers: { 'Content-Type': 'application/json' },  
@@ -164,7 +165,6 @@ async function fetchTokenData(tokenAddress) {
   } catch (error) {
     console.error('Error fetching token data:', error);
     bot.sendMessage(chatId, `⚠️ Error fetching token data for ${tokenAddress}: ${error.message}`);
-    // Fallback mock data
     return {
       name: `Token_${tokenAddress.slice(0, 8)}`,
       address: tokenAddress,
@@ -521,7 +521,6 @@ app.get('/', (req, res) => res.send('Bot running!'));
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  // Fix: Only append /webhook if not already present
   const heliusWebhookUrl = webhookBaseUrl.endsWith('/webhook') ? webhookBaseUrl : `${webhookBaseUrl}/webhook`;
   console.log('Helius Webhook URL:', heliusWebhookUrl);
   console.log('Starting Helius webhook monitoring...');
