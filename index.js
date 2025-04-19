@@ -43,7 +43,7 @@ let userStates = {};
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body;
-    console.log('Received Helius webhook (raw):', JSON.stringify(events, null, 2));
+    console.log('Webhook received, type:', events.type, 'data:', JSON.stringify(events, null, 2));
     bot.sendMessage(chatId, 'ℹ️ Received webhook from Helius');
 
     if (!events || !Array.isArray(events) || events.length === 0) {
@@ -56,12 +56,13 @@ app.post('/webhook', async (req, res) => {
       console.log('Processing event (detailed):', JSON.stringify(event, null, 2));
       if (event.type === 'CREATE') {
         let tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature;
+        console.log('Extracted token address:', tokenAddress);
+
         if (!tokenAddress) {
           console.log('No token address found in event, trying to extract:', JSON.stringify(event));
           bot.sendMessage(chatId, `⚠️ No token address found in event: ${JSON.stringify(event)}`);
           continue;
         }
-        console.log('Extracted token address:', tokenAddress);
 
         if (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes('675kPX9G2jELzfT5vY26a6qCa3YkoF5qL78xJ6nQozT')) {
           const tokenData = await extractTokenInfo(event);
@@ -110,7 +111,7 @@ app.post('/test-webhook', async (req, res) => {
       programId: PUMP_FUN_PROGRAM.toString(),
       accounts: ['TEST_TOKEN_ADDRESS']
     };
-    console.log('Received test webhook:', mockEvent);
+    console.log('Received test webhook:', JSON.stringify(mockEvent, null, 2));
     bot.sendMessage(chatId, 'ℹ️ Received test webhook');
 
     const tokenData = await extractTokenInfo(mockEvent);
