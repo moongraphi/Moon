@@ -17,6 +17,7 @@ async function extractTokenInfo(tx) {
         body: JSON.stringify({ mintAccounts: [tokenAddress] })
       }
     );
+    if (!response.ok) throw new Error(`Helius API error: ${response.status} - ${await response.text()}`);
     const data = await response.json();
     const metadata = data[0] || {};
 
@@ -26,25 +27,26 @@ async function extractTokenInfo(tx) {
     const supply = mintInfo.supply.toNumber() / 10 ** mintInfo.decimals; // Total supply in tokens
 
     // Estimate liquidity and market cap (simplified, needs real pool data)
-    // This is a placeholder - real liquidity needs pool data from Raydium or Orca
-    const liquidity = metadata.liquidity || (supply * 0.01); // Assuming 1% of supply as liquidity (adjust logic)
-    const marketCap = metadata.marketCap || (supply * 0.000005); // Using launch price as base (adjust logic)
+    const liquidity = metadata.liquidity || (supply * 0.01); // Assuming 1% of supply as liquidity
+    const marketCap = metadata.marketCap || (supply * 0.000005); // Using launch price as base
+
+    console.log('Fetched token data:', { metadata, mintInfo, liquidity, marketCap }); // Debug log
 
     return {
       name: metadata.name || `Token_${tokenAddress.slice(0, 8)}`,
       address: tokenAddress,
       liquidity: liquidity || null,
       marketCap: marketCap || null,
-      devHolding: metadata.devHolding || null, // Requires off-chain data or wallet analysis
-      poolSupply: metadata.poolSupply || null, // Requires pool data
-      launchPrice: metadata.price || 0.000005, // Default if not available
+      devHolding: metadata.devHolding || null,
+      poolSupply: metadata.poolSupply || null,
+      launchPrice: metadata.price || 0.000005,
       mintAuthRevoked: metadata.mintAuthorityRevoked || mintInfo.mintAuthority?.equals(PublicKey.default) || false,
       freezeAuthRevoked: metadata.freezeAuthorityRevoked || mintInfo.freezeAuthority?.equals(PublicKey.default) || false,
       mint: tokenAddress
     };
   } catch (error) {
-    console.error('Error extracting token info:', error);
-    return null; // Return null on error to avoid dummy data
+    console.error('Error extracting token info for', tokenAddress, ':', error);
+    return null; // Return null on error
   }
 }
 
@@ -79,7 +81,7 @@ function formatTokenMessage(token) {
          `Launch Price: ${token.launchPrice || 'N/A'} SOL\n` +
          `Mint Auth Revoked: ${token.mintAuthRevoked ? 'Yes' : 'No'}\n` +
          `Freeze Auth Revoked: ${token.freezeAuthRevoked ? 'Yes' : 'No'}\n` +
-         `Chart: https://dexscreener.com/solana/${token.address || ''}`; // Removed Pump.fun link
+         `Chart: https://dexscreener.com/solana/${token.address || ''}`;
 }
 
 module.exports = { extractTokenInfo, checkAgainstFilters, formatTokenMessage };
