@@ -53,6 +53,8 @@ app.post('/webhook', async (req, res) => {
 
     for (const event of events) {
       console.log('Processing event (detailed):', JSON.stringify(event, null, 2));
+      console.log('Program ID from event:', event.programId); // Debug log
+      console.log('Accounts from event:', event.accounts); // Debug log
       if (event.type === 'CREATE') {
         let tokenAddress = event.tokenMint || event.accounts?.[0] || event.signature;
         console.log('Extracted token address:', tokenAddress);
@@ -63,7 +65,8 @@ app.post('/webhook', async (req, res) => {
           continue;
         }
 
-        if (event.programId === PUMP_FUN_PROGRAM.toString() || event.accounts?.includes(PUMP_FUN_PROGRAM.toString())) {
+        // Improved check for Pump.fun program ID
+        if (event.programId === PUMP_FUN_PROGRAM.toString() || (event.accounts && event.accounts.some(acc => acc === PUMP_FUN_PROGRAM.toString()))) {
           const tokenData = await extractTokenInfo(event);
           if (!tokenData) {
             console.log('Failed to fetch token data for:', tokenAddress);
@@ -86,7 +89,11 @@ app.post('/webhook', async (req, res) => {
             bot.sendMessage(chatId, `ℹ️ Token ${tokenData.address} did not pass filters`);
           }
         } else {
-          console.log('Event not from Pump.fun, ignored:', JSON.stringify(event));
+          console.log('Event not from Pump.fun, ignored. Program ID check failed:', {
+            eventProgramId: event.programId,
+            pumpFunProgram: PUMP_FUN_PROGRAM.toString(),
+            accounts: event.accounts
+          });
         }
       } else {
         console.log('Event type ignored (not CREATE):', JSON.stringify(event));
